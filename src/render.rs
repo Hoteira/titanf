@@ -16,9 +16,7 @@ pub struct Metrics {
 impl TrueTypeFont {
     pub fn get_char<const CACHE: bool>(&mut self, c: char, size: usize) -> (Metrics, Vec<u8>) {
 
-        let dpi = 96.0;
-        let pixels = size as f32 * dpi / 72.0;
-        let scale = pixels / self.head.units_per_em as f32;
+        let scale = size as f32 / self.head.units_per_em as f32;
 
         let id = self.glyph_id_table.get(&c).unwrap_or(&0);
 
@@ -34,7 +32,7 @@ impl TrueTypeFont {
             .get(&id)
             .unwrap_or(self.glyph_data_table.get(&0).unwrap());
 
-        let width = (((glyph.x_max - glyph.x_min) as f32 * scale).ceil() as usize) + 1;
+        let width = (((glyph.x_max - glyph.x_min) as f32 * scale).ceil() as usize);
         let height = (((glyph.y_max - glyph.y_min) as f32 * scale).ceil() as usize) + 1;
         let baseline = -(glyph.y_max as f32 * scale) as isize;
 
