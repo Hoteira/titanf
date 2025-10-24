@@ -1,7 +1,7 @@
 <div align="center">
   <br>
   <br>
-  <img src="https://raw.githubusercontent.com/Hoteira/titan-f/refs/heads/master/img/icon.png" alt="TitanF Logo" width="120" height="120">
+  <img src="https://raw.githubusercontent.com/Hoteira/titan-f/refs/heads/master/img/icon.svg" alt="TitanF Logo" width="120" height="120">
   
   # TitanF
   
