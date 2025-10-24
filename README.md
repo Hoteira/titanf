@@ -43,7 +43,7 @@ titanf = "0.1.1"
 
 ## Features
 
-- 🚀 **Fast** 
+- 🚀 **Blazingly Fast** 
 - 🦀 **Zero Dependencies** — Pure Rust, no external crates
 - 📦 **`no_std` Compatible** — Originally built for my own OS, it works fine in baremetal environments (just needs `alloc`)
 - 💯 **Stable Rust** — No nightly features, no unsafe code
@@ -89,5 +89,6 @@ Please open an issue or PR on GitHub.
 
 <br>
 <br>
+
 
 
