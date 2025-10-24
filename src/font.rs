@@ -1,11 +1,10 @@
-#[cfg(not(feature = "std"))]
-use core::ptr::read_unaligned;
 
 #[cfg(feature = "std")]
 use std::mem::size_of;
 
 #[cfg(not(feature = "std"))]
 use core::mem::size_of;
+
 use crate::Vec;
 use crate::Map;
 use crate::tables::cmap::CmapTable;
@@ -62,9 +61,7 @@ pub struct TrueTypeFont {
     pub kern_table: Map<(u32, u32), i16>,
 
     pub cache: crate::cache::Cache,
-
-    pub winding_buffer: Vec<i16>,
-    pub bitmap_buffer: Vec<u8>,
+    pub dpi: f32,
 }
 
 
@@ -99,10 +96,12 @@ impl TrueTypeFont {
             kern_table: Map::new(),
 
             cache: crate::cache::Cache::new(),
-
-            winding_buffer: Vec::new(),
-            bitmap_buffer: Vec::new(),
+            dpi: 72.0,
         }
+    }
+
+    pub fn set_dpi(&mut self, dpi: f32) {
+        self.dpi = dpi;
     }
 
     pub(crate) fn load_offset_table(&mut self, font_bytes: &[u8]) {

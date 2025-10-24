@@ -63,6 +63,7 @@ impl TrueTypeFont {
     }
 
 
+    #[inline(always)]
     pub(crate) fn get_metrics(&self, glyph_id: &u32, scale: f32) -> (usize, isize) {
         let idx = *glyph_id as usize;
 

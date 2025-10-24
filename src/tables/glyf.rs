@@ -1,5 +1,6 @@
 use crate::font::{get_i16_be, get_u16_be, TrueTypeFont};
-use crate::rasterizer::point::Contour;
+use crate::preprocess::lines::{Bounds, Line};
+use crate::preprocess::points::Contour;
 use crate::tables::cmap::SupportedCmapFormats::{Format0, Format12, Format4, Format6};
 use crate::tables::glyf::ProtoGlyph::{Composite, Simple};
 use crate::tables::loca::LocaTable;
@@ -59,10 +60,12 @@ pub(crate) struct CompositeComponent {
 
 pub struct Glyph {
     pub points: Vec<Contour>,
-    pub x_min: i16,
-    pub y_min: i16,
-    pub x_max: i16,
-    pub y_max: i16,
+
+    pub v_lines: Vec<Line>,
+    pub m_lines: Vec<Line>,
+
+    pub y_max: f32,
+    pub bounds: Bounds,
 }
 
 #[derive(Debug, Clone)]
@@ -75,13 +78,15 @@ pub(crate) enum ProtoGlyph {
 impl ProtoGlyph {
     pub(crate) fn finalize(&self) -> Glyph {
         match self {
-            Simple(SimpleGlyph { points, x_min, y_min, x_max, y_max, .. }) | Composite(CompositeGlyph { points, x_min, y_min, x_max, y_max, .. }) => {
+            Simple(SimpleGlyph { points, y_max, .. }) | Composite(CompositeGlyph { points, y_max, .. }) => {
                 Glyph {
                     points: points.clone(),
-                    x_min: *x_min,
-                    y_min: *y_min,
-                    x_max: *x_max,
-                    y_max: *y_max,
+
+                    v_lines: Vec::new(),
+                    m_lines: Vec::new(),
+
+                    y_max: *y_max as f32,
+                    bounds: Bounds::default(),
                 }
             }
 
@@ -96,10 +101,12 @@ impl Glyph {
     pub(crate) fn new() -> Self {
         Glyph {
             points: Vec::new(),
-            x_min: 0,
-            y_min: 0,
-            x_max: 0,
-            y_max: 0,
+
+            v_lines: Vec::new(),
+            m_lines: Vec::new(),
+
+            y_max: 0.0,
+            bounds: Bounds::default(),
         }
     }
 }

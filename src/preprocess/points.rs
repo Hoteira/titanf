@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use crate::F32NoStd;
+
 use crate::tables::glyf::{
     CompositeComponent,
     Glyph,
@@ -9,13 +12,12 @@ use crate::tables::glyf::{
 };
 
 use crate::Vec;
-use crate::F32NoStd;
 use crate::font::TrueTypeFont;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Point {
-    pub(crate) x: i16,
-    pub(crate) y: i16,
+    pub(crate) x: f32,
+    pub(crate) y: f32,
     pub(crate) on_curve: bool,
 }
 
@@ -46,39 +48,34 @@ impl TrueTypeFont {
                     } else {
                         (g.end_pts_of_contours[i] - g.end_pts_of_contours[i - 1]) as usize
                     };
-                    // Add +1 to capacity for the closing point
-                    let mut contour = Contour::new(contour_size + 1);
+
+                    let mut contour = Contour::new(contour_size);
 
                     for j in contour_start..=g.end_pts_of_contours[i] as usize {
                         contour.points.push(Point {
-                            x: g.x_coordinates[j],
-                            y: g.y_coordinates[j],
-                            on_curve: (expanded_flags[j] & 0x01) != 0,
+                            x: (g.x_coordinates[j] - g.x_min) as f32,
+                            y: (g.y_max - g.y_coordinates[j]) as f32,
+                            on_curve: expanded_flags[j],
                         });
-                    }
-
-                    // Append the first point as the last point to close the contour
-                    if !contour.points.is_empty() {
-                        let first_point = contour.points[0];
-                        contour.points.push(first_point);
                     }
 
                     contour_start = g.end_pts_of_contours[i] as usize + 1;
                     g.points.push(contour);
                 }
-
-                insert_midpoints(&mut g.points);
             }
 
             ProtoGlyph::Composite(g) => {
                 load_from_parent(&mut g.points, &g.components, font, font_bytes);
-                insert_midpoints(&mut g.points);
             }
 
             ProtoGlyph::Empty => {}
         }
 
-        glyph.finalize()
+        let mut glyph = glyph.finalize();
+        fix_degenerates(&mut glyph.points);
+        glyph.build_lines(self.head.units_per_em as f32);
+
+        glyph
     }
 }
 
@@ -104,10 +101,11 @@ pub(crate) fn load_from_parent(master: &mut Vec<Contour>, comps: &Vec<CompositeC
                     let mut contour = Contour::new(contour_size + 1);
 
                     for j in contour_start..=g.end_pts_of_contours[i] as usize {
+
                         contour.points.push(Point {
-                            x: g.x_coordinates[j],
-                            y: g.y_coordinates[j],
-                            on_curve: expanded_flags[j] & 0x01 != 0,
+                            x: (g.x_coordinates[j] - g.x_min) as f32,
+                            y: (g.y_max - g.y_coordinates[j]) as f32,
+                            on_curve: expanded_flags[j],
                         });
                     }
 
@@ -132,38 +130,6 @@ pub(crate) fn load_from_parent(master: &mut Vec<Contour>, comps: &Vec<CompositeC
     }
 }
 
-pub(crate) fn insert_midpoints(points: &mut Vec<Contour>) {
-
-    fix_degenerate_offcurves(points);
-
-    for contour in points.iter_mut() {
-
-        if contour.points.len() <= 1 {
-            continue;
-        }
-
-        let mut c = 0;
-        while c < contour.points.len() {
-            let len = contour.points.len();
-            let next_idx = (c + 1) % len;
-
-            if !contour.points[c].on_curve && !contour.points[next_idx].on_curve {
-                let x = (contour.points[c].x + contour.points[next_idx].x) / 2;
-                let y = (contour.points[c].y + contour.points[next_idx].y) / 2;
-                let midpoint = Point {
-                    x,
-                    y,
-                    on_curve: true,
-                };
-
-                contour.points.insert(c + 1, midpoint);
-                c += 2;
-            } else {
-                c += 1;
-            }
-        }
-    }
-}
 
 
 fn transform_points(points: &mut [Point], component: &CompositeComponent) {
@@ -184,30 +150,31 @@ fn transform_points(points: &mut [Point], component: &CompositeComponent) {
     };
 
     for p in points.iter_mut() {
-        let old_x = p.x as f32;
-        let old_y = p.y as f32;
+        let old_x = p.x;
+        let old_y = p.y;
         let nx = old_x * x_scale + old_y * scale_10;
         let ny = old_x * scale_01 + old_y * y_scale;
-        p.x = nx.round() as i16;
-        p.y = ny.round() as i16;
+        p.x = nx.round();
+        p.y = ny.round();
     }
 
     if component.flags & ARGS_ARE_XY_VALUES != 0 {
-        let dx = component.argument1;
-        let dy = component.argument2;
+        let dx = component.argument1 as f32;
+        let dy = component.argument2 as f32;
         for p in points.iter_mut() {
-            p.x = p.x.wrapping_add(dx);
-            p.y = p.y.wrapping_add(dy);
+            p.x = p.x + dx;
+            p.y = p.y + dy;
         }
     }
 }
 
-fn expand_flags(raw_flags: &[u8], num_points: usize) -> Vec<u8> {
+fn expand_flags(raw_flags: &[u8], num_points: usize) -> Vec<bool> {
     let mut expanded = Vec::with_capacity(num_points);
     let mut i = 0;
+
     while expanded.len() < num_points && i < raw_flags.len() {
         let flag = raw_flags[i];
-        expanded.push(flag);
+        expanded.push((flag & 0x01) != 0);
         i += 1;
 
         if flag & 0x08 != 0 {
@@ -220,7 +187,7 @@ fn expand_flags(raw_flags: &[u8], num_points: usize) -> Vec<u8> {
                 if expanded.len() >= num_points {
                     break;
                 }
-                expanded.push(flag);
+                expanded.push((flag & 0x01) != 0);
             }
         }
     }
@@ -228,28 +195,34 @@ fn expand_flags(raw_flags: &[u8], num_points: usize) -> Vec<u8> {
     expanded
 }
 
-fn fix_degenerate_offcurves(contours: &mut Vec<Contour>) {
-    const EPSILON: i16 = 0;
-
+pub fn fix_degenerates(contours: &mut Vec<Contour>) {
     for contour in contours.iter_mut() {
         let n = contour.points.len();
         if n < 2 {
             continue;
         }
 
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let next = (i + 1) % n;
-            let (p0, p1) = (contour.points[i], contour.points[next]);
+            let p0 = contour.points[i];
+            let p1 = contour.points[next];
 
             if !p0.on_curve && !p1.on_curve {
                 let dx = p1.x - p0.x;
                 let dy = p1.y - p0.y;
 
-                if dy.abs() <= EPSILON {
+                //Arbitrary fine-tuning, gotta fix it tho
+                if dy.abs() < 1e-6 && dx.abs() > 200.0 {
                     contour.points[i].on_curve = true;
                     contour.points[next].on_curve = true;
+
+                    i += 2;
+                    continue;
                 }
             }
+
+            i += 1;
         }
     }
 }

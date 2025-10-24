@@ -1,7 +1,8 @@
-use crate::font::TrueTypeFont;
+#[cfg(not(feature = "std"))]
 use crate::F32NoStd;
-use crate::rasterizer::aet::rasterize;
-use crate::rasterizer::point::Contour;
+
+use crate::font::TrueTypeFont;
+use crate::rasterizer::dda;
 use crate::Vec;
 
 #[derive(Clone, Debug)]
@@ -14,10 +15,11 @@ pub struct Metrics {
 }
 
 impl TrueTypeFont {
-    pub fn get_char<const CACHE: bool>(&mut self, c: char, size: usize) -> (Metrics, Vec<u8>) {
 
-        let scale = size as f32 / self.head.units_per_em as f32;
+    #[inline(always)]
+    pub fn get_char<const CACHE: bool>(&mut self, c: char, size: f32) -> (Metrics, Vec<u8>) {
 
+        let scale = size * (self.dpi / 72.0) / self.head.units_per_em as f32;
         let id = self.glyph_id_table.get(&c).unwrap_or(&0);
 
         if CACHE {
@@ -32,52 +34,25 @@ impl TrueTypeFont {
             .get(&id)
             .unwrap_or(self.glyph_data_table.get(&0).unwrap());
 
-        let width = (((glyph.x_max - glyph.x_min) as f32 * scale).ceil() as usize);
-        let height = (((glyph.y_max - glyph.y_min) as f32 * scale).ceil() as usize) + 1;
-        let baseline = -(glyph.y_max as f32 * scale) as isize;
+        let width = (scale * glyph.bounds.width).ceil() as usize + 1;
+        let height = (scale * glyph.bounds.height).ceil() as usize;
+        let baseline = -(scale * glyph.y_max) as isize;
 
-        let required_size = width * height;
-
-        let extra = self.get_metrics(id, scale);
+        let metrics = self.get_metrics(id, scale);
         let metrics = Metrics {
             width,
             height,
-            advance_width: extra.0,
-            left_side_bearing: extra.1,
+            advance_width: metrics.0,
+            left_side_bearing: metrics.1,
             base_line: baseline,
         };
 
-        self.bitmap_buffer.resize(required_size, 0);
-        self.bitmap_buffer[..required_size].fill(0);
-
-        rasterize(&glyph.points, scale, glyph.y_max as f32, glyph.x_min as f32, width, height, &mut self.bitmap_buffer);
-
+        let bitmap = dda::Rasterizer::new(width, height).draw(&glyph, scale).to_bitmap();
 
         if CACHE {
-            self.cache.set(*id, size, metrics.clone(), self.bitmap_buffer.clone());
+            self.cache.set(*id, size, metrics.clone(), bitmap.clone());
         }
 
-        (metrics, self.bitmap_buffer.clone())
+        (metrics, bitmap)
     }
 }
-
-fn show_points(points: &[Contour], scale: f32, y_max: f32, x_min: f32, width: usize, height: usize, bitmap_buffer: &mut Vec<u8>) {
-    for contour in points {
-        for p in &contour.points {
-            if p.on_curve {
-                let x = ((p.x as f32 - x_min) * scale).round() as isize;
-                let y = ((y_max - p.y as f32) * scale).round() as isize;
-
-                let idx = y as usize * width + x as usize;
-                bitmap_buffer[idx] = 255;
-            } else {
-                let x = ((p.x as f32 - x_min) * scale).round() as isize;
-                let y = ((y_max - p.y as f32) * scale).round() as isize;
-
-                let idx = y as usize * width + x as usize;
-                bitmap_buffer[idx] = 150;
-            }
-        }
-    }
-}
-

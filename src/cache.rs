@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use crate::F32NoStd;
+
 use crate::Map;
 use crate::Vec;
 use crate::render::Metrics;
@@ -9,15 +12,18 @@ impl Cache {
         Cache(Map::new())
     }
 
+    #[inline(always)]
     pub fn flush(&mut self) {
         self.0.clear();
     }
 
-    pub fn get(&self, id: u32, size: usize) -> Option<&(Metrics, Vec<u8>)> {
-         self.0.get(&(id, size))
+    #[inline(always)]
+    pub fn get(&self, id: u32, size: f32) -> Option<&(Metrics, Vec<u8>)> {
+         self.0.get(&(id, size.ceil() as usize) )
     }
 
-    pub fn set(&mut self, size: u32, scale: usize, metrics: Metrics, data: Vec<u8>) {
-        self.0.insert((size, scale), (metrics, data));
+    #[inline(always)]
+    pub fn set(&mut self, size: u32, scale: f32, metrics: Metrics, data: Vec<u8>) {
+        self.0.insert((size, scale.ceil() as usize), (metrics, data));
     }
 }

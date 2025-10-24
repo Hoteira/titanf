@@ -1,5 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, BatchSize};
 use std::hint::black_box;
+use std::io::Write;
 use ab_glyph::{Font, PxScale, ScaleFont};
 use rusttype::{Scale, point};
 use titanf::TrueTypeFont;
@@ -8,9 +9,9 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
     let mut group = c.benchmark_group("cjk_latin_scaling");
 
     // Configure group
-    group.sample_size(100);
+    group.sample_size(10);
     group.warm_up_time(std::time::Duration::from_secs(3));
-    group.measurement_time(std::time::Duration::from_secs(15));
+    group.measurement_time(std::time::Duration::from_secs(3));
 
     // Load fonts
     let font_data = std::fs::read("NotoSansSC-Medium.ttf").expect("Failed to load font");
@@ -53,29 +54,98 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
     all_chars.extend_from_slice(&cjk_chars);
     all_chars.extend_from_slice(&latin_chars);
 
-    let sizes = [12, 16, 24, 48, 72, 120, 250];
-    let counts = [1_000];
+    let sizes = [12, 16, 24, 48, 72];
+    let count = 1_000;
 
     for &size in &sizes {
-        for &count in &counts {
-            let bench_name = format!("{}pt_{}chars", size, count);
+        let bench_name = format!("{}pt_1000chars", size);
 
-            //rusttype
-            group.bench_with_input(
-                BenchmarkId::new("rusttype", &bench_name),
-                &(size, count),
-                |b, &(size, count)| {
-                    b.iter( || {
+        // TitanF benchmark
+        group.bench_with_input(
+            BenchmarkId::new("titanf", &bench_name),
+            &(size, count),
+            |b, &(size, count)| {
+                b.iter( || {
+
+                    for i in 0..count {
+                        let c = all_chars[i % all_chars.len()];
+                        let (metrics, bitmap) = font_0.get_char::<false>(
+                            black_box(c),
+                            black_box(size as f32)
+                        );
+                        black_box(&bitmap);
+                    }
+                }
+                );
+            },
+        );
+
+        //rusttype
+        group.bench_with_input(
+            BenchmarkId::new("rusttype", &bench_name),
+            &(size, count),
+            |b, &(size, count)| {
+                b.iter( || {
+                    for i in 0..count {
+                        let c = all_chars[i % all_chars.len()];
+                        let glyph = font_2.glyph(black_box(c))
+                            .scaled(Scale::uniform(black_box(size as f32)))
+                            .positioned(point(0.0, 0.0));
+
+                        if let Some(bb) = glyph.pixel_bounding_box() {
+                            let mut bitmap = vec![0u8; (bb.width() * bb.height()) as usize];
+                            glyph.draw(|x, y, v| {
+                                let idx = (y * bb.width() as u32 + x) as usize;
+                                if idx < bitmap.len() {
+                                    bitmap[idx] = (v * 255.0) as u8;
+                                }
+                            });
+                            black_box(&bitmap);
+                        }
+                    }
+                },
+                );
+            },
+        );
+
+        // fontdue benchmark
+        group.bench_with_input(
+            BenchmarkId::new("fontdue", &bench_name),
+            &(size, count),
+            |b, &(size, count)| {
+                b.iter( || {
                         for i in 0..count {
                             let c = all_chars[i % all_chars.len()];
-                            let glyph = font_2.glyph(black_box(c))
-                                .scaled(Scale::uniform(black_box(size as f32)))
-                                .positioned(point(0.0, 0.0));
+                            let (metrics, bitmap) = font_1.rasterize(
+                                black_box(c),
+                                black_box(size as f32)
+                            );
+                            black_box(&bitmap);
+                        }
+                    }
+                );
+            },
+        );
 
-                            if let Some(bb) = glyph.pixel_bounding_box() {
-                                let mut bitmap = vec![0u8; (bb.width() * bb.height()) as usize];
-                                glyph.draw(|x, y, v| {
-                                    let idx = (y * bb.width() as u32 + x) as usize;
+        // ab_glyph benchmark
+        group.bench_with_input(
+            BenchmarkId::new("ab_glyph", &bench_name),
+            &(size, count),
+            |b, &(size, count)| {
+                b.iter( || {
+                        for i in 0..count {
+                            let c = all_chars[i % all_chars.len()];
+                            let scaled_font = font_3.as_scaled(PxScale::from(black_box(size as f32)));
+                            let glyph = scaled_font.scaled_glyph(black_box(c));
+
+                            if let Some(outlined) = font_3.outline_glyph(glyph) {
+                                let bounds = outlined.px_bounds();
+                                let width = bounds.width() as usize;
+                                let height = bounds.height() as usize;
+                                let mut bitmap = vec![0u8; width * height];
+
+                                outlined.draw(|x, y, v| {
+                                    let idx = y as usize * width + x as usize;
                                     if idx < bitmap.len() {
                                         bitmap[idx] = (v * 255.0) as u8;
                                     }
@@ -83,83 +153,10 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
                                 black_box(&bitmap);
                             }
                         }
-                    },
-                    );
-                },
-            );
-
-            // TitanF benchmark
-            group.bench_with_input(
-                BenchmarkId::new("titanf", &bench_name),
-                &(size, count),
-                |b, &(size, count)| {
-                    b.iter( || {
-                            font_0.winding_buffer.clear();
-                            font_0.bitmap_buffer.clear();
-
-                            for i in 0..count {
-                                let c = all_chars[i % all_chars.len()];
-                                let (metrics, bitmap) = font_0.get_char::<false>(
-                                    black_box(c),
-                                    black_box(size)
-                                );
-                                black_box(&bitmap);
-                            }
-                        }
-                    );
-                },
-            );
-
-            // fontdue benchmark
-            group.bench_with_input(
-                BenchmarkId::new("fontdue", &bench_name),
-                &(size, count),
-                |b, &(size, count)| {
-                    b.iter( || {
-                            for i in 0..count {
-                                let c = all_chars[i % all_chars.len()];
-                                let (metrics, bitmap) = font_1.rasterize(
-                                    black_box(c),
-                                    black_box(size as f32)
-                                );
-                                black_box(&bitmap);
-                            }
-                        }
-                    );
-                },
-            );
-
-            // ab_glyph benchmark
-            group.bench_with_input(
-                BenchmarkId::new("ab_glyph", &bench_name),
-                &(size, count),
-                |b, &(size, count)| {
-                    b.iter( || {
-                            for i in 0..count {
-                                let c = all_chars[i % all_chars.len()];
-                                let scaled_font = font_3.as_scaled(PxScale::from(black_box(size as f32)));
-                                let glyph = scaled_font.scaled_glyph(black_box(c));
-
-                                if let Some(outlined) = font_3.outline_glyph(glyph) {
-                                    let bounds = outlined.px_bounds();
-                                    let width = bounds.width() as usize;
-                                    let height = bounds.height() as usize;
-                                    let mut bitmap = vec![0u8; width * height];
-
-                                    outlined.draw(|x, y, v| {
-                                        let idx = y as usize * width + x as usize;
-                                        if idx < bitmap.len() {
-                                            bitmap[idx] = (v * 255.0) as u8;
-                                        }
-                                    });
-                                    black_box(&bitmap);
-                                }
-                            }
-                        }
-                    );
-                },
-            );
-        }
+                    }
+                );
+            },
+        );
     }
 
     group.finish();

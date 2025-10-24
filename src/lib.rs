@@ -60,8 +60,7 @@ pub mod cache;
 
 /// Font table structures (CMAP, GLYF, etc.)
 pub mod tables;
-
-
+mod preprocess;
 
 pub use crate::font::TrueTypeFont;
 
