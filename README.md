@@ -25,10 +25,10 @@ fn main() {
     let mut font = TrueTypeFont::load_font(font_data);
     
     // Render a character!
-    let (metrics, bitmap) = font.get_char::<false>('A', 16);
+    let (metrics, bitmap) = font.get_char::<false>('A', 16.0);
     
     //Enable built-in glyph caching
-    let (metrics, bitmap) = font.get_char::<true>('B', 16);
+    let (metrics, bitmap) = font.get_char::<true>('B', 16.0);
     //                                      ^^^^
 }
 ```
@@ -89,6 +89,7 @@ Please open an issue or PR on GitHub.
 
 <br>
 <br>
+
 
 
 
