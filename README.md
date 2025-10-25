@@ -2,7 +2,7 @@
   <br>
   <img src="https://raw.githubusercontent.com/Hoteira/titan-f/refs/heads/master/img/icon.svg" alt="TiTanF Logo" width="120" height="120">
 
-# TiTanForge
+# TiTanFont
 
 **Fast TrueType font rasterizer in pure Rust**
 
