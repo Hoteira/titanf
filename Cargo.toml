@@ -6,10 +6,10 @@ edition = "2024"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/Hoteira/titan-f"
-description = "Blazingly fast, no_std compatible font rasterizer written in pure Rust"
+description = "Fast, safe, no_std font rasterizer written in pure Rust"
 keywords = ["font", "rasterizer", "truetype", "rendering", "text"]
 categories = ["graphics", "rendering", "no-std"]
-homepage = "https://github.com/Hoteira/titan-f"
+homepage = "https://github.com/Hoteira/titanf"
 documentation = "https://docs.rs/titanf"
 
 exclude = [
