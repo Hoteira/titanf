@@ -1,8 +1,6 @@
 use crate::tables::glyf::Glyph;
-use crate::Vec;
 use crate::vec;
-
-use crate::preprocess::points::Point;
+use crate::Vec;
 
 #[derive(Debug)]
 pub(crate) struct Line {
@@ -25,8 +23,8 @@ pub(crate) struct Line {
     pub(crate) abs_dx: f32,
     pub(crate) abs_dy: f32,
 
-    pub(crate)dx_is_zero: bool,
-    pub(crate)dy_is_zero: bool,
+    pub(crate) dx_is_zero: bool,
+    pub(crate) dy_is_zero: bool,
 }
 
 pub(crate) struct Bounds {
@@ -201,7 +199,6 @@ impl Glyph {
     }
 
     pub(crate) fn insert_line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32) {
-
         if y0 == y1 {
             return;
         }

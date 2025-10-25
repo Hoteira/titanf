@@ -1,12 +1,9 @@
-
 #[cfg(feature = "std")]
 use std::mem::size_of;
 
 #[cfg(not(feature = "std"))]
 use core::mem::size_of;
 
-use crate::Vec;
-use crate::Map;
 use crate::tables::cmap::CmapTable;
 use crate::tables::glyf::Glyph;
 use crate::tables::head::HeadTable;
@@ -14,6 +11,8 @@ use crate::tables::hhea::HheaTable;
 use crate::tables::hmtx::HmtxTable;
 use crate::tables::loca::LocaTable;
 use crate::tables::maxp::MaxpTable;
+use crate::Map;
+use crate::Vec;
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct OffsetTable {
@@ -63,7 +62,6 @@ pub struct TrueTypeFont {
     pub cache: crate::cache::Cache,
     pub dpi: f32,
 }
-
 
 
 impl OffsetTable {

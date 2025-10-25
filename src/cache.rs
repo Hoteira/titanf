@@ -1,11 +1,11 @@
 #[cfg(not(feature = "std"))]
 use crate::F32NoStd;
 
+use crate::render::Metrics;
 use crate::Map;
 use crate::Vec;
-use crate::render::Metrics;
 
-pub struct Cache (Map<(u32, usize), (Metrics, Vec<u8>)>);
+pub struct Cache(Map<(u32, usize), (Metrics, Vec<u8>)>);
 
 impl Cache {
     pub fn new() -> Self {
@@ -19,7 +19,7 @@ impl Cache {
 
     #[inline(always)]
     pub fn get(&self, id: u32, size: f32) -> Option<&(Metrics, Vec<u8>)> {
-         self.0.get(&(id, size.ceil() as usize) )
+        self.0.get(&(id, size.ceil() as usize))
     }
 
     #[inline(always)]

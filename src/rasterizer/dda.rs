@@ -19,14 +19,13 @@ impl Rasterizer {
     }
 
     #[inline(always)]
-    pub(crate) fn draw(mut self, glyph: &Glyph, scale: f32) -> Self{
-
+    pub(crate) fn draw(mut self, glyph: &Glyph, scale: f32) -> Self {
         for line in &glyph.v_lines {
             self.v_line(line, scale);
         }
 
         for line in &glyph.m_lines {
-             self.m_line(line, scale);
+            self.m_line(line, scale);
         }
 
         self
@@ -34,7 +33,6 @@ impl Rasterizer {
 
     #[inline(always)]
     fn v_line(&mut self, line: &Line, scale: f32) {
-
         let x0 = line.x0 * scale;
         let y0 = line.y0 * scale;
         let y1 = line.y1 * scale;
@@ -164,7 +162,6 @@ impl Rasterizer {
         let mut out = vec![0u8; self.width * self.height];
         let mut acc = 0.0f32;
         for i in 0..self.width * self.height {
-
             acc += self.coverage_buffer[i];
             out[i] = (acc.abs().clamp(0.0, 1.0) * 255.0) as u8;
         }

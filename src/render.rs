@@ -2,9 +2,7 @@
 use crate::F32NoStd;
 
 use crate::font::TrueTypeFont;
-use crate::preprocess::points::Contour;
 use crate::rasterizer::dda;
-use crate::tables::glyf::Glyph;
 use crate::Vec;
 
 #[derive(Clone, Debug)]
@@ -17,10 +15,8 @@ pub struct Metrics {
 }
 
 impl TrueTypeFont {
-
     #[inline(always)]
     pub fn get_char<const CACHE: bool>(&mut self, c: char, size: f32) -> (Metrics, Vec<u8>) {
-
         let scale = size * (self.dpi / 72.0) / self.head.units_per_em as f32;
         let id = self.glyph_id_table.get(&c).unwrap_or(&0);
 

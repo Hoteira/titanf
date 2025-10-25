@@ -4,7 +4,7 @@ use crate::font::{get_u16_be, get_u32_be, TrueTypeFont};
 pub(crate) struct MaxpTable {
     pub(crate) version: u32,
     pub(crate) num_glyphs: u16,
-    
+
     pub(crate) max_points: u16,
     pub(crate) max_contours: u16,
     pub(crate) max_composite_points: u16,

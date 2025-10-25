@@ -2,7 +2,7 @@ use crate::font::TrueTypeFont;
 use crate::Vec;
 
 #[derive(Debug, Clone)]
-pub (crate)struct HmtxTable {
+pub(crate) struct HmtxTable {
     pub(crate) h_metrics: Vec<LongHorMetric>,
     pub(crate) left_side_bearings: Vec<i16>,
 }
@@ -23,7 +23,6 @@ impl HmtxTable {
 }
 
 impl TrueTypeFont {
-
     pub(crate) fn load_hmtx(&mut self, font_bytes: &[u8]) {
         for table in &self.tables {
             if table.table_tag == "hmtx".as_bytes() {
@@ -68,12 +67,9 @@ impl TrueTypeFont {
         let idx = *glyph_id as usize;
 
         if idx < self.hmtx.h_metrics.len() {
-
             let metric = self.hmtx.h_metrics[idx];
             ((metric.advance_width as f32 * scale) as usize, (metric.left_side_bearing as f32 * scale) as isize)
-
         } else {
-
             let lsb_idx = idx - self.hmtx.h_metrics.len();
             if lsb_idx < self.hmtx.left_side_bearings.len() {
                 let advance = self.hmtx.h_metrics.last().unwrap().advance_width;

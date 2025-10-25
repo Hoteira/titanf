@@ -172,7 +172,7 @@ impl TrueTypeFont {
                 let start = offsets[glyph_id as usize] as u32 * 2;
                 let end = offsets[glyph_id as usize + 1] as u32 * 2;
                 (start, end)
-            },
+            }
 
             LocaTable::Long(offsets) => {
                 let start = offsets[glyph_id as usize];
@@ -280,7 +280,6 @@ impl TrueTypeFont {
                     } else {
                         y_coord -= delta;
                     }
-
                 } else if flag & 0x20 == 0 {
                     let delta = get_i16_be(font_bytes, offset);
                     offset += 2;
@@ -372,9 +371,7 @@ impl TrueTypeFont {
 
     pub(crate) fn cache_all_glyphs(&mut self, font_bytes: &[u8]) {
         match &self.cmap.subtables[0] {
-
             Format0 { data, .. } => {
-
                 let mut glyph_data = self.get_glyph(font_bytes, 0);
                 self.glyph_data_table.insert(0, self.load_points(&mut glyph_data, &self, &font_bytes));
 
@@ -391,8 +388,7 @@ impl TrueTypeFont {
                 }
             }
 
-            Format4 { data, ..} => {
-
+            Format4 { data, .. } => {
                 let mut glyph_data = self.get_glyph(font_bytes, 0);
                 self.glyph_data_table.insert(0, self.load_points(&mut glyph_data, &self, &font_bytes));
 
@@ -415,7 +411,6 @@ impl TrueTypeFont {
             }
 
             Format6 { data, .. } => {
-
                 let mut glyph_data = self.get_glyph(font_bytes, 0);
                 self.glyph_data_table.insert(0, self.load_points(&mut glyph_data, &self, &font_bytes));
 
@@ -434,7 +429,6 @@ impl TrueTypeFont {
             }
 
             Format12 { data, .. } => {
-
                 let mut glyph_data = self.get_glyph(font_bytes, 0);
                 self.glyph_data_table.insert(0, self.load_points(&mut glyph_data, &self, &font_bytes));
 
@@ -454,7 +448,7 @@ impl TrueTypeFont {
                 }
             }
 
-            _ => {},
+            _ => {}
         }
     }
 }

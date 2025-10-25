@@ -2,7 +2,8 @@
 //!
 //! **TitanF** is a blazingly fast, dependency-free font rasterizer written in pure Rust.
 //!
-//! - 🚀 Zero dependencies
+//! - 🚀 Fast
+//! - 📦 Zero dependencies
 //! - ⚙️ `no_std` compatible (requires `alloc`)
 //! - 🎨 Subpixel anti-aliasing
 //! - 🦀 Safe, stable Rust (no unsafe)
@@ -14,6 +15,7 @@
 //! let mut font = TrueTypeFont::load_font(font_data);
 //!
 //! let (metrics, bitmap) = font.get_char::<false>('A', 16);
+//! //                                      ^^^^^ turn caching on/off
 //! ```
 //!
 //! ## See Also
@@ -64,6 +66,9 @@ mod preprocess;
 
 pub use crate::font::TrueTypeFont;
 
+
+/// A `no_std` replacement for common `f32` methods
+/// (floor, ceil, round, abs) for environments without `std`.
 pub trait F32NoStd {
     fn floor(self) -> f32;
     fn ceil(self) -> f32;
@@ -71,9 +76,6 @@ pub trait F32NoStd {
     fn abs(self) -> f32;
 }
 
-
-/// A `no_std` replacement for common `f32` methods
-/// (floor, ceil, round, abs) for environments without `std`.
 impl F32NoStd for f32 {
     #[inline]
     fn floor(self) -> f32 {
@@ -103,7 +105,7 @@ impl F32NoStd for f32 {
             (self - 0.5).ceil()
         }
     }
-    
+
     #[inline]
     fn abs(self) -> f32 {
         if self < 0.0 { -self } else { self }

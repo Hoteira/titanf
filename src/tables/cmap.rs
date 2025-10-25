@@ -7,11 +7,11 @@ use core::mem::size_of;
 use crate::font::{
     get_u16_be,
     get_u32_be,
-    TrueTypeFont
+    TrueTypeFont,
 };
 
-use crate::Vec;
 use crate::vec;
+use crate::Vec;
 
 pub struct CmapTable {
     pub offset: usize,
@@ -158,7 +158,6 @@ impl TrueTypeFont {
 
     pub fn load_cmap_subtable_formats(&mut self, font_bytes: &[u8]) {
         for encoding in &self.cmap.encodings {
-
             let subtable_offset = self.cmap.offset + encoding.offset as usize;
             let subtable = SubtableFormat {
                 format: get_u16_be(font_bytes, subtable_offset),
@@ -333,7 +332,6 @@ impl TrueTypeFont {
                 match data.end_count.binary_search(&(codepoint as u16)) {
                     Ok(i) | Err(i) if i < data.end_count.len() && codepoint as u16 >= data.start_count[i] => {
                         if data.id_range_offset[i] == 0 {
-
                             ((codepoint as i32 + data.id_delta[i] as i32) as u32) & 0xFFFF
                         } else {
                             let seg_count = data.seg_count_x2 / 2;

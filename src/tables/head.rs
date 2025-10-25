@@ -3,7 +3,7 @@ use crate::font::{
     get_i64_be,
     get_u16_be,
     get_u32_be,
-    TrueTypeFont
+    TrueTypeFont,
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -57,7 +57,6 @@ impl TrueTypeFont {
     pub(crate) fn load_head(&mut self, font_bytes: &[u8]) {
         for table in &self.tables {
             if table.table_tag == "head".as_bytes() {
-
                 let offset = table.offset as usize;
 
                 self.head = HeadTable {

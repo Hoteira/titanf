@@ -1,7 +1,7 @@
 use crate::font::{
     get_i16_be,
     get_u16_be,
-    TrueTypeFont
+    TrueTypeFont,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -74,7 +74,7 @@ impl TrueTypeFont {
                     reserved3: get_i16_be(font_bytes, offset + 28),
                     reserved4: get_i16_be(font_bytes, offset + 30),
                     metric_data_format: get_i16_be(font_bytes, offset + 32),
-                    number_of_h_metrics:get_u16_be(font_bytes, offset + 34),
+                    number_of_h_metrics: get_u16_be(font_bytes, offset + 34),
                 };
 
                 return;

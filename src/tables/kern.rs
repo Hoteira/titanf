@@ -1,14 +1,13 @@
 use crate::font::{
     get_i16_be,
     get_u16_be,
-    TrueTypeFont
+    TrueTypeFont,
 };
 
 impl TrueTypeFont {
     pub(crate) fn load_kerning_pairs(&mut self, font_bytes: &[u8]) {
         for table in &self.tables {
             if table.table_tag == "kern".as_bytes() {
-
                 let offset = table.offset as usize;
 
                 let version = get_u16_be(font_bytes, offset);

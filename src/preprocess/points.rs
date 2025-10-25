@@ -3,8 +3,8 @@ use crate::F32NoStd;
 
 use crate::tables::glyf::{CompositeComponent, Glyph, ProtoGlyph, SimpleGlyph, ARGS_ARE_XY_VALUES, WE_HAVE_AN_X_AND_Y_SCALE, WE_HAVE_A_SCALE, WE_HAVE_A_TWO_BY_TWO};
 
-use crate::Vec;
 use crate::font::TrueTypeFont;
+use crate::Vec;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Point {
@@ -96,7 +96,6 @@ pub fn load_simple_glyph(g: &mut SimpleGlyph, component: Option<&CompositeCompon
         g.points.push(contour);
     }
 }
-
 
 
 fn transform_points(points: &mut [Point], component: &CompositeComponent) {

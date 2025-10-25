@@ -1,8 +1,7 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, BatchSize};
-use std::hint::black_box;
-use std::io::Write;
 use ab_glyph::{Font, PxScale, ScaleFont};
-use rusttype::{Scale, point};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use rusttype::{point, Scale};
+use std::hint::black_box;
 use titanf::TrueTypeFont;
 
 fn benchmark_cjk_latin(c: &mut Criterion) {
@@ -65,13 +64,12 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
             BenchmarkId::new("titanf", &bench_name),
             &(size, count),
             |b, &(size, count)| {
-                b.iter( || {
-
+                b.iter(|| {
                     for i in 0..count {
                         let c = all_chars[i % all_chars.len()];
                         let (metrics, bitmap) = font_0.get_char::<false>(
                             black_box(c),
-                            black_box(size as f32)
+                            black_box(size as f32),
                         );
                         black_box(&bitmap);
                     }
@@ -85,7 +83,7 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
             BenchmarkId::new("rusttype", &bench_name),
             &(size, count),
             |b, &(size, count)| {
-                b.iter( || {
+                b.iter(|| {
                     for i in 0..count {
                         let c = all_chars[i % all_chars.len()];
                         let glyph = font_2.glyph(black_box(c))
@@ -113,16 +111,16 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
             BenchmarkId::new("fontdue", &bench_name),
             &(size, count),
             |b, &(size, count)| {
-                b.iter( || {
-                        for i in 0..count {
-                            let c = all_chars[i % all_chars.len()];
-                            let (metrics, bitmap) = font_1.rasterize(
-                                black_box(c),
-                                black_box(size as f32)
-                            );
-                            black_box(&bitmap);
-                        }
+                b.iter(|| {
+                    for i in 0..count {
+                        let c = all_chars[i % all_chars.len()];
+                        let (metrics, bitmap) = font_1.rasterize(
+                            black_box(c),
+                            black_box(size as f32),
+                        );
+                        black_box(&bitmap);
                     }
+                }
                 );
             },
         );
@@ -132,28 +130,28 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
             BenchmarkId::new("ab_glyph", &bench_name),
             &(size, count),
             |b, &(size, count)| {
-                b.iter( || {
-                        for i in 0..count {
-                            let c = all_chars[i % all_chars.len()];
-                            let scaled_font = font_3.as_scaled(PxScale::from(black_box(size as f32)));
-                            let glyph = scaled_font.scaled_glyph(black_box(c));
+                b.iter(|| {
+                    for i in 0..count {
+                        let c = all_chars[i % all_chars.len()];
+                        let scaled_font = font_3.as_scaled(PxScale::from(black_box(size as f32)));
+                        let glyph = scaled_font.scaled_glyph(black_box(c));
 
-                            if let Some(outlined) = font_3.outline_glyph(glyph) {
-                                let bounds = outlined.px_bounds();
-                                let width = bounds.width() as usize;
-                                let height = bounds.height() as usize;
-                                let mut bitmap = vec![0u8; width * height];
+                        if let Some(outlined) = font_3.outline_glyph(glyph) {
+                            let bounds = outlined.px_bounds();
+                            let width = bounds.width() as usize;
+                            let height = bounds.height() as usize;
+                            let mut bitmap = vec![0u8; width * height];
 
-                                outlined.draw(|x, y, v| {
-                                    let idx = y as usize * width + x as usize;
-                                    if idx < bitmap.len() {
-                                        bitmap[idx] = (v * 255.0) as u8;
-                                    }
-                                });
-                                black_box(&bitmap);
-                            }
+                            outlined.draw(|x, y, v| {
+                                let idx = y as usize * width + x as usize;
+                                if idx < bitmap.len() {
+                                    bitmap[idx] = (v * 255.0) as u8;
+                                }
+                            });
+                            black_box(&bitmap);
                         }
                     }
+                }
                 );
             },
         );
