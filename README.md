@@ -1,6 +1,6 @@
 <div align="center">
   <br>
-  <img src="https://raw.githubusercontent.com/Hoteira/titan-f/refs/heads/master/img/icon.svg" alt="TiTanF Logo" width="120" height="120">
+  <img src="https://raw.githubusercontent.com/Hoteira/titanf/refs/heads/master/img/icon.svg" alt="TiTanF Logo" width="120" height="120">
 
 # TiTanFont
 
@@ -11,7 +11,7 @@
 [![no_std](https://img.shields.io/badge/no__std-compatible-success.svg)](https://docs.rust-embedded.org/book/)
 [![crates.io](https://img.shields.io/crates/v/titanf.svg)](https://crates.io/crates/titanf)
 
-<sub>🦀 Pure Rust • 📦 Zero Dependencies • ⚙️ no_std Compatible</sub>
+<sub>🦀 Pure Rust • 📦 Zero Dependencies • ⚙️ no_std</sub>
 </div>
 
 <br>
@@ -40,14 +40,14 @@ fn main() {
 
 ```toml
 [dependencies]
-titanf
+titanf = "x.x.0"
 ```
 
 ## Features
 
 - 🚀 **Fast** — Up to 100,000 glyphs/second at 16px
 - 🦀 **Zero Dependencies** — Pure Rust, no external crates
-- 📦 **`no_std` Compatible** — Works in bare-metal environments (requires `alloc`)
+- 📦 **`no_std`** — Works in bare-metal environments (requires `alloc`)
 - 💯 **Stable Rust** — No nightly features, no unsafe code
 - 🔧 **Built-in Parser** — Handles TrueType tables: `cmap`, `glyf`, `head`, `hhea`, `hmtx`, `kern`, `loca`, `maxp`
 
