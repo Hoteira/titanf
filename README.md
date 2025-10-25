@@ -36,7 +36,7 @@ fn main() {
 **Add to your `Cargo.toml`:**
 ```toml
 [dependencies]
-titanf = "1.0.0"
+titanf = "1.1.0"
 ```
 
 ---
@@ -45,9 +45,9 @@ titanf = "1.0.0"
 
 - 🚀 **Blazingly Fast** 
 - 🦀 **Zero Dependencies** — Pure Rust, no external crates
-- 📦 **`no_std` Compatible** — Originally built for my own OS, it works fine in baremetal environments (just needs `alloc`)
+- 📦 **`no_std` Compatible** — Iit is made to work in baremetal environments (just needs `alloc`)
 - 💯 **Stable Rust** — No nightly features, no unsafe code
-- 🔧 **Built-in TrueType Parser** — Handles CMAP, GLYF, HEAD, HHEA, HMTX, KERN, LOCA, MAXP and keeps it dependency free
+- 🔧 **Built-in TrueType Parser** — Handles `cmap`, `glyf`, `head`, `hhea`, `hmtx`, `kern`, `loca`, `maxp` and keeps it dependency free
 
 ---
 
@@ -83,7 +83,7 @@ Please open an issue or PR on GitHub.
 ---
 
 <div align="center">
-  <br><sub>🦀 Pure Rust • 📦 Zero Dependencies • ⚙️ no_std Compatible</sub>
+  <br><sub>🦀 Pure Rust • 📦 Zero Dependencies • ⚙️ no_std</sub>
 </div>
 
 
