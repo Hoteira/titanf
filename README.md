@@ -36,7 +36,7 @@ fn main() {
 **Add to your `Cargo.toml`:**
 ```toml
 [dependencies]
-titanf = "1.1.0"
+titanf
 ```
 
 ---
