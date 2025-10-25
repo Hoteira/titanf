@@ -4,6 +4,7 @@ use crate::F32NoStd;
 use crate::font::TrueTypeFont;
 use crate::preprocess::points::Contour;
 use crate::rasterizer::dda;
+use crate::tables::glyf::Glyph;
 use crate::Vec;
 
 #[derive(Clone, Debug)]
@@ -49,7 +50,6 @@ impl TrueTypeFont {
         };
 
         let bitmap = dda::Rasterizer::new(width, height).draw(&glyph, scale).to_bitmap();
-
         if CACHE {
             self.cache.set(*id, size, metrics.clone(), bitmap.clone());
         }

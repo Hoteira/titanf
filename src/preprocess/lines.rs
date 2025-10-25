@@ -64,7 +64,7 @@ impl Segment {
 
 impl Glyph {
     pub(crate) fn build_lines(&mut self, units_per_em: f32) {
-        let max_area = 3.0 * 2.0 * (units_per_em / 48.0);
+        let max_area = 3.0 * 2.0 * (units_per_em / 120.0);
         let mut line_segments: Vec<(f32, f32, f32, f32)> = Vec::new();
 
         let mut x_min = f32::MAX;
