@@ -55,7 +55,7 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
     all_chars.extend_from_slice(&latin_chars);
 
     let sizes = [12, 16, 24, 48, 72, 120, 250];
-    let count = 1_000;
+    let count = 10_000;
 
     for &size in &sizes {
         let bench_name = format!("{}pt_1000chars", size);

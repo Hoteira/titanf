@@ -156,6 +156,13 @@ impl TrueTypeFont {
         font.cache_all_glyphs(&font_bytes);
         font.load_kerning_pairs(&font_bytes);
 
+        //CLear tables from memory
+        font.offset_table = OffsetTable::new();
+        font.tables.clear();
+        font.cmap = CmapTable::new();
+        font.loca = LocaTable::Short(Vec::new());
+        font.maxp = MaxpTable::new();
+
         font
     }
 }
