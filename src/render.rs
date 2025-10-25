@@ -2,6 +2,7 @@
 use crate::F32NoStd;
 
 use crate::font::TrueTypeFont;
+use crate::preprocess::points::Contour;
 use crate::rasterizer::dda;
 use crate::Vec;
 

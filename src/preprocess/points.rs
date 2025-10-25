@@ -1,15 +1,7 @@
 #[cfg(not(feature = "std"))]
 use crate::F32NoStd;
 
-use crate::tables::glyf::{
-    CompositeComponent,
-    Glyph,
-    ProtoGlyph,
-    ARGS_ARE_XY_VALUES,
-    WE_HAVE_AN_X_AND_Y_SCALE,
-    WE_HAVE_A_SCALE,
-    WE_HAVE_A_TWO_BY_TWO
-};
+use crate::tables::glyf::{CompositeComponent, Glyph, ProtoGlyph, SimpleGlyph, ARGS_ARE_XY_VALUES, WE_HAVE_AN_X_AND_Y_SCALE, WE_HAVE_A_SCALE, WE_HAVE_A_TWO_BY_TWO};
 
 use crate::Vec;
 use crate::font::TrueTypeFont;
@@ -36,32 +28,7 @@ impl TrueTypeFont {
     pub(crate) fn load_points(&self, glyph: &mut ProtoGlyph, font: &TrueTypeFont, font_bytes: &[u8]) -> Glyph {
         match glyph {
             ProtoGlyph::Simple(g) => {
-                let num_points = g.end_pts_of_contours.last().map(|&e| (e + 1) as usize).unwrap_or(0);
-                let expanded_flags = expand_flags(&g.flags, num_points);
-
-                g.points.reserve(g.end_pts_of_contours.len());
-
-                let mut contour_start = 0;
-                for i in 0..g.end_pts_of_contours.len() {
-                    let contour_size = if i == 0 {
-                        g.end_pts_of_contours[i] as usize + 1
-                    } else {
-                        (g.end_pts_of_contours[i] - g.end_pts_of_contours[i - 1]) as usize
-                    };
-
-                    let mut contour = Contour::new(contour_size);
-
-                    for j in contour_start..=g.end_pts_of_contours[i] as usize {
-                        contour.points.push(Point {
-                            x: (g.x_coordinates[j] - g.x_min) as f32,
-                            y: (g.y_max - g.y_coordinates[j]) as f32,
-                            on_curve: expanded_flags[j],
-                        });
-                    }
-
-                    contour_start = g.end_pts_of_contours[i] as usize + 1;
-                    g.points.push(contour);
-                }
+                load_simple_glyph(g, None);
             }
 
             ProtoGlyph::Composite(g) => {
@@ -72,7 +39,6 @@ impl TrueTypeFont {
         }
 
         let mut glyph = glyph.finalize();
-        fix_degenerates(&mut glyph.points);
         glyph.build_lines(self.head.units_per_em as f32);
 
         glyph
@@ -85,40 +51,7 @@ pub(crate) fn load_from_parent(master: &mut Vec<Contour>, comps: &Vec<CompositeC
 
         match real_glyph {
             ProtoGlyph::Simple(g) => {
-                let num_points = g.end_pts_of_contours.last().map(|&e| (e + 1) as usize).unwrap_or(0);
-                let expanded_flags = expand_flags(&g.flags, num_points);
-
-                g.points.reserve(g.end_pts_of_contours.len());
-
-                let mut contour_start = 0;
-                for i in 0..g.end_pts_of_contours.len() {
-                    let contour_size = if i == 0 {
-                        g.end_pts_of_contours[i] as usize + 1
-                    } else {
-                        (g.end_pts_of_contours[i] - g.end_pts_of_contours[i - 1]) as usize
-                    };
-
-                    let mut contour = Contour::new(contour_size + 1);
-
-                    for j in contour_start..=g.end_pts_of_contours[i] as usize {
-
-                        contour.points.push(Point {
-                            x: (g.x_coordinates[j] - g.x_min) as f32,
-                            y: (g.y_max - g.y_coordinates[j]) as f32,
-                            on_curve: expanded_flags[j],
-                        });
-                    }
-
-                    if !contour.points.is_empty() {
-                        let first_point = contour.points[0];
-                        contour.points.push(first_point);
-                    }
-
-                    transform_points(&mut contour.points, component);
-
-                    contour_start = g.end_pts_of_contours[i] as usize + 1;
-                    master.push(contour);
-                }
+                load_simple_glyph(g, Some(component));
             }
 
             ProtoGlyph::Composite(g) => {
@@ -127,6 +60,39 @@ pub(crate) fn load_from_parent(master: &mut Vec<Contour>, comps: &Vec<CompositeC
 
             ProtoGlyph::Empty => {}
         }
+    }
+}
+
+pub fn load_simple_glyph(g: &mut SimpleGlyph, component: Option<&CompositeComponent>) {
+    let num_points = g.end_pts_of_contours.last().map(|&e| (e + 1) as usize).unwrap_or(0);
+    let expanded_flags = expand_flags(&g.flags, num_points);
+
+    g.points.reserve(g.end_pts_of_contours.len());
+
+    let mut contour_start = 0;
+    for i in 0..g.end_pts_of_contours.len() {
+        let contour_size = if i == 0 {
+            g.end_pts_of_contours[i] as usize + 1
+        } else {
+            (g.end_pts_of_contours[i] - g.end_pts_of_contours[i - 1]) as usize
+        };
+
+        let mut contour = Contour::new(contour_size);
+
+        for j in contour_start..=g.end_pts_of_contours[i] as usize {
+            contour.points.push(Point {
+                x: (g.x_coordinates[j] - g.x_min) as f32,
+                y: (g.y_max - g.y_coordinates[j]) as f32,
+                on_curve: expanded_flags[j],
+            });
+        }
+
+        if let Some(ref component) = component {
+            transform_points(&mut contour.points, component);
+        }
+
+        contour_start = g.end_pts_of_contours[i] as usize + 1;
+        g.points.push(contour);
     }
 }
 
@@ -193,36 +159,4 @@ fn expand_flags(raw_flags: &[u8], num_points: usize) -> Vec<bool> {
     }
 
     expanded
-}
-
-pub fn fix_degenerates(contours: &mut Vec<Contour>) {
-    for contour in contours.iter_mut() {
-        let n = contour.points.len();
-        if n < 2 {
-            continue;
-        }
-
-        let mut i = 0;
-        while i < n {
-            let next = (i + 1) % n;
-            let p0 = contour.points[i];
-            let p1 = contour.points[next];
-
-            if !p0.on_curve && !p1.on_curve {
-                let dx = p1.x - p0.x;
-                let dy = p1.y - p0.y;
-
-                //Arbitrary fine-tuning, gotta fix it tho
-                if dy.abs() < 1e-6 && dx.abs() > 200.0 {
-                    contour.points[i].on_curve = true;
-                    contour.points[next].on_curve = true;
-
-                    i += 2;
-                    continue;
-                }
-            }
-
-            i += 1;
-        }
-    }
 }

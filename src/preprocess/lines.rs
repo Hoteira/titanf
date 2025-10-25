@@ -5,21 +5,35 @@ use crate::vec;
 use crate::preprocess::points::Point;
 
 #[derive(Debug)]
-pub struct Line {
-    pub x0: f32,
-    pub x1: f32,
-    pub y0: f32,
-    pub y1: f32,
+pub(crate) struct Line {
+    pub(crate) x0: f32,
+    pub(crate) x1: f32,
+    pub(crate) y0: f32,
+    pub(crate) y1: f32,
 
-    pub dx: f32,
-    pub dy: f32,
+    pub(crate) dx: f32,
+    pub(crate) dy: f32,
+
+    pub(crate) dx_sign: i32,
+    pub(crate) dy_sign: i32,
+
+    pub(crate) dt_dx: f32,
+    pub(crate) dt_dy: f32,
+
+    pub(crate) is_degen: bool,
+
+    pub(crate) abs_dx: f32,
+    pub(crate) abs_dy: f32,
+
+    pub(crate)dx_is_zero: bool,
+    pub(crate)dy_is_zero: bool,
 }
 
-pub struct Bounds {
-    pub _x: f32,
-    pub _y: f32,
-    pub width: f32,
-    pub height: f32,
+pub(crate) struct Bounds {
+    pub(crate) _x: f32,
+    pub(crate) _y: f32,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
 }
 
 impl Default for Bounds {
@@ -32,8 +46,6 @@ impl Default for Bounds {
         }
     }
 }
-
-const SIZE: f32 = 40.0;
 
 struct Segment {
     a_x: f32,
@@ -52,22 +64,19 @@ impl Segment {
 
 impl Glyph {
     pub(crate) fn build_lines(&mut self, units_per_em: f32) {
-        let max_area = 3.0 * 2.0 * (units_per_em / SIZE);
+        let max_area = 3.0 * 2.0 * (units_per_em / 48.0);
         let mut line_segments: Vec<(f32, f32, f32, f32)> = Vec::new();
 
         let mut x_min = f32::MAX;
         let mut x_max = f32::MIN;
         let mut y_min = f32::MAX;
         let mut y_max = f32::MIN;
-        let mut tot_area = 0.0;
 
         for contour in &self.points {
             let points = &contour.points;
             if points.is_empty() {
                 continue;
             }
-
-            tot_area += contour_area(points);
 
             let start_x = points[0].x;
             let start_y = points[0].y;
@@ -130,14 +139,41 @@ impl Glyph {
             line.y1 -= y_min;
         }
 
+        let width = x_max - x_min;
+        let height = y_max - y_min;
+
+        for line in self.v_lines.iter_mut().chain(self.m_lines.iter_mut()) {
+            if line.x0 < 0.0 { line.x0 = 0.0; }
+            if line.x0 > width { line.x0 = width; }
+            if line.x1 < 0.0 { line.x1 = 0.0; }
+            if line.x1 > width { line.x1 = width; }
+            if line.y0 < 0.0 { line.y0 = 0.0; }
+            if line.y0 > height { line.y0 = height; }
+            if line.y1 < 0.0 { line.y1 = 0.0; }
+            if line.y1 > height { line.y1 = height; }
+
+            // Recompute derived fields
+            line.dx = line.x1 - line.x0;
+            line.dy = line.y1 - line.y0;
+            line.dx_is_zero = line.dx.abs() < 1e-6;
+            line.dy_is_zero = line.dy.abs() < 1e-6;
+            line.dx_sign = line.dx.signum() as i32;
+            line.dy_sign = line.dy.signum() as i32;
+            line.dt_dx = if !line.dx_is_zero { 1.0 / line.dx.abs() } else { f32::MAX };
+            line.dt_dy = if !line.dy_is_zero { 1.0 / line.dy.abs() } else { f32::MAX };
+            line.is_degen = line.dx_is_zero && line.dy_is_zero;
+            line.abs_dx = line.dx.abs();
+            line.abs_dy = line.dy.abs();
+        }
+
         self.bounds = Bounds {
             _x: 0.0,
             _y: 0.0,
-            width: x_max - x_min,
-            height: y_max - y_min,
+            width,
+            height,
         };
 
-        self.points.clear();
+        //self.points.clear();
     }
 
     fn flatten_quad(p0_x: f32, p0_y: f32, p1_x: f32, p1_y: f32, p2_x: f32, p2_y: f32, max_area: f32, output: &mut Vec<(f32, f32, f32, f32)>) {
@@ -172,8 +208,25 @@ impl Glyph {
 
         let dx = x1 - x0;
         let dy = y1 - y0;
+        let is_degen = dx == 0.0 && dy == 0.0;
 
-        let line = Line { x0, y0, x1, y1, dx, dy };
+        let line = Line {
+            x0,
+            y0,
+            x1,
+            y1,
+            dx,
+            dy,
+            dx_sign: if dx != 0.0 { dx.signum() as i32 } else { 0 },
+            dy_sign: if dy != 0.0 { dy.signum() as i32 } else { 0 },
+            dt_dx: if dx != 0.0 { 1.0 / dx.abs() } else { f32::MAX },
+            dt_dy: if dy != 0.0 { 1.0 / dy.abs() } else { f32::MAX },
+            is_degen,
+            abs_dx: dx.abs(),
+            abs_dy: dy.abs(),
+            dx_is_zero: dx == 0.0,
+            dy_is_zero: dy == 0.0,
+        };
 
         if x0 == x1 {
             self.v_lines.push(line);
@@ -181,14 +234,4 @@ impl Glyph {
             self.m_lines.push(line);
         }
     }
-}
-
-fn contour_area(points: &[Point]) -> f32 {
-    let mut area = 0.0;
-    for i in 0..points.len() {
-        let j = (i + 1) % points.len();
-        area += points[i].x * points[j].y;
-        area -= points[j].x * points[i].y;
-    }
-    area * 0.5
 }
