@@ -40,7 +40,7 @@ impl TrueTypeFont {
 
         let mut glyph = glyph.finalize();
         fix_points(&mut glyph.points);
-        glyph.build_lines(self.head.units_per_em as f32);
+        //glyph.build_lines(self.head.units_per_em as f32, 40.0);
 
         glyph
     }
@@ -134,7 +134,6 @@ fn transform_points(points: &mut [Point], component: &CompositeComponent) {
     }
 }
 
-#[inline(always)]
 fn expand_flags(raw_flags: &[u8], num_points: usize) -> Vec<bool> {
     let mut expanded = Vec::with_capacity(num_points);
     let mut i = 0;
@@ -162,7 +161,6 @@ fn expand_flags(raw_flags: &[u8], num_points: usize) -> Vec<bool> {
     expanded
 }
 
-#[inline(always)]
 pub fn fix_points(contours: &mut [Contour]) {
     for contour in contours.iter_mut() {
         let len = contour.points.len();

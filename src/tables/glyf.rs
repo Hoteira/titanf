@@ -58,6 +58,7 @@ pub(crate) struct CompositeComponent {
     pub(crate) scale_10: Option<f32>,
 }
 
+#[derive(Clone)]
 pub struct Glyph {
     pub points: Vec<Contour>,
 

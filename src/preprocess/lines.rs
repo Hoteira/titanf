@@ -2,7 +2,7 @@ use crate::tables::glyf::Glyph;
 use crate::vec;
 use crate::Vec;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Line {
     pub(crate) x0: f32,
     pub(crate) x1: f32,
@@ -27,6 +27,7 @@ pub(crate) struct Line {
     pub(crate) dy_is_zero: bool,
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct Bounds {
     pub(crate) _x: f32,
     pub(crate) _y: f32,
@@ -61,8 +62,8 @@ impl Segment {
 }
 
 impl Glyph {
-    pub(crate) fn build_lines(&mut self, units_per_em: f32) {
-        let max_area = 3.0 * 2.0 * (units_per_em / 120.0);
+    pub(crate) fn build_lines(&mut self, units_per_em: f32, scale: f32) {
+        let max_area = 3.0 * 2.0 * (units_per_em / scale);
         let mut line_segments: Vec<(f32, f32, f32, f32)> = Vec::new();
 
         let mut x_min = f32::MAX;
@@ -127,7 +128,7 @@ impl Glyph {
         }
 
         for (x0, y0, x1, y1) in line_segments {
-            self.insert_line(x0, y0, x1, y1);
+            self.insert_line(x0, y0, x1, y1, scale);
         }
 
         for line in self.v_lines.iter_mut().chain(self.m_lines.iter_mut()) {
@@ -170,8 +171,6 @@ impl Glyph {
             width,
             height,
         };
-
-        //self.points.clear();
     }
 
     fn flatten_quad(p0_x: f32, p0_y: f32, p1_x: f32, p1_y: f32, p2_x: f32, p2_y: f32, max_area: f32, output: &mut Vec<(f32, f32, f32, f32)>) {
@@ -198,7 +197,7 @@ impl Glyph {
         }
     }
 
-    pub(crate) fn insert_line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32) {
+    pub(crate) fn insert_line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, scale: f32) {
         if y0 == y1 {
             return;
         }
@@ -208,19 +207,19 @@ impl Glyph {
         let is_degen = dx == 0.0 && dy == 0.0;
 
         let line = Line {
-            x0,
-            y0,
-            x1,
-            y1,
-            dx,
-            dy,
+            x0: x0 * scale,
+            y0: y0 * scale,
+            x1: x1 * scale,
+            y1: y1 * scale,
+            dx: dx * scale,
+            dy: dy * scale,
             dx_sign: if dx != 0.0 { dx.signum() as i32 } else { 0 },
             dy_sign: if dy != 0.0 { dy.signum() as i32 } else { 0 },
-            dt_dx: if dx != 0.0 { 1.0 / dx.abs() } else { f32::MAX },
-            dt_dy: if dy != 0.0 { 1.0 / dy.abs() } else { f32::MAX },
+            dt_dx: if dx != 0.0 { 1.0 / (dx * scale).abs() } else { f32::MAX },
+            dt_dy: if dy != 0.0 { 1.0 / (dy * scale).abs() } else { f32::MAX },
             is_degen,
-            abs_dx: dx.abs(),
-            abs_dy: dy.abs(),
+            abs_dx: (dx * scale).abs(),
+            abs_dy: (dy * scale).abs(),
             dx_is_zero: dx == 0.0,
             dy_is_zero: dy == 0.0,
         };
