@@ -74,5 +74,8 @@ Licensed under the [MIT License](LICENSE-MIT).
 
 Contributions are welcome! Open an issue or PR on GitHub.
 
-<br>
-<br>
+---
+
+<div align="center">
+  <sub>Built with 🦀 Rust and ❤️</sub>
+</div>
