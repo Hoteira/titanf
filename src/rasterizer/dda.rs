@@ -43,7 +43,7 @@ impl Rasterizer {
         loop {
             if x >= 0 && x < self.width as i32 && y >= 0 && y < self.height as i32 {
                 let idx = (x + y * self.width as i32) as usize;
-                self.add_coverage(idx, (y_prev - y_cross).clamp(-1.0, 1.0), mid_x);
+                unsafe { self.add_coverage(idx, (y_prev - y_cross).clamp(-1.0, 1.0), mid_x); }
                 y_prev = y_cross;
             }
 
@@ -57,7 +57,7 @@ impl Rasterizer {
 
         if x >= 0 && x < self.width as i32 && y >= 0 && y < self.height as i32 {
             let idx = (x + y * self.width as i32) as usize;
-            self.add_coverage(idx, (y_prev - line.y1).clamp(-1.0, 1.0), mid_x);
+            unsafe { self.add_coverage(idx, (y_prev - line.y1).clamp(-1.0, 1.0), mid_x); }
         }
     }
 
@@ -97,7 +97,7 @@ impl Rasterizer {
 
                 if at_end {
                     let mid_x = (((x_prev + x1) * 0.5) - x as f32).clamp(0.0, 1.0);
-                    self.add_coverage(idx, (y_prev - y1).clamp(-1.0, 1.0), mid_x);
+                    unsafe { self.add_coverage(idx, (y_prev - y1).clamp(-1.0, 1.0), mid_x); }
                     break;
                 }
 
@@ -112,7 +112,7 @@ impl Rasterizer {
                 let y_next = y0 + t * dy;
 
                 let mid_x = (((x_prev + x_next) * 0.5) - x as f32).clamp(0.0, 1.0);
-                self.add_coverage(idx, (y_prev - y_next).clamp(-1.0, 1.0), mid_x);
+                unsafe { self.add_coverage(idx, (y_prev - y_next).clamp(-1.0, 1.0), mid_x); }
 
                 x_prev = x_next;
                 y_prev = y_next;
@@ -137,26 +137,32 @@ impl Rasterizer {
     }
 
 
-    fn add_coverage(&mut self, idx: usize, height: f32, mid_x: f32) {
+    #[inline(always)]
+    unsafe fn add_coverage(&mut self, idx: usize, height: f32, mid_x: f32) {
         let m = height * mid_x;
         let left = height - m;
         let right = m;
 
-        self.coverage_buffer[idx] += left;
-        if idx + 1 < self.coverage_buffer.len() {
-            self.coverage_buffer[idx + 1] += right;
-        }
+        *self.coverage_buffer.get_unchecked_mut(idx) += left;
+        *self.coverage_buffer.get_unchecked_mut(idx + 1) += right;
     }
 
 
     pub fn to_bitmap(&self) -> Vec<u8> {
-        let mut out = vec![0u8; self.width * self.height];
+        let len = self.width * self.height;
+        let mut out = vec![0u8; len];
         let mut acc = 0.0f32;
-        for i in 0..self.width * self.height {
-            acc += self.coverage_buffer[i];
-            let val = acc.abs();
-            let val = if val > 1.0 { 1.0 } else { val };
-            out[i] = (val * 255.0) as u8;
+        
+        let buf_ptr = self.coverage_buffer.as_ptr();
+        let out_ptr = out.as_mut_ptr();
+
+        unsafe {
+            for i in 0..len {
+                acc += *buf_ptr.add(i);
+                let val = acc.abs();
+                let val = if val > 1.0 { 1.0 } else { val };
+                *out_ptr.add(i) = (val * 255.0) as u8;
+            }
         }
         out
     }
