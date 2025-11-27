@@ -58,7 +58,7 @@ impl TrueTypeFont {
         (metrics, bitmap)
     }
 
-    pub fn get_char_lines(&self, c: char, size: f32) -> (Vec<Line>, Vec<Line>, Vec<Line>) {
+    pub fn get_char_lines(&self, c: char, size: f32) -> (Metrics, Vec<Line>, Vec<Line>, Vec<Line>) {
 
         let scale = size * (self.dpi / 72.0) / self.head.units_per_em as f32;
         let id = self.glyph_id_table.get(&c).unwrap_or(&0);
@@ -68,11 +68,26 @@ impl TrueTypeFont {
             .get(&id)
             .unwrap_or(self.glyph_data_table.get(&0).unwrap()).clone();
 
+        let metrics = self.get_metrics(id, scale);
+
+        let width = (scale * glyph.bounds.width).ceil() as usize + 1;
+        let height = (scale * glyph.bounds.height).ceil() as usize;
+        let baseline = -(scale * glyph.y_max) as isize;
+
+        let metrics = Metrics {
+            width,
+            height,
+            advance_width: metrics.0,
+            left_side_bearing: metrics.1,
+            base_line: baseline,
+        };
+
         glyph.m_lines.reserve(glyph.points.len() * 3);
         glyph.v_lines.reserve(glyph.points.len() * 3);
+        glyph.lines.reserve(glyph.points.len() * 4);
         glyph.build_lines::<true>(self.head.units_per_em as f32, scale);
 
-        (glyph.v_lines, glyph.m_lines, glyph.lines)
+        (metrics, glyph.v_lines, glyph.m_lines, glyph.lines
 
     }
 }
