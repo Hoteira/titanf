@@ -71,7 +71,7 @@ pub struct GlyphLines {
 
 impl Glyph {
     pub(crate) fn build_lines<const COMPLETE: bool>(&self, _units_per_em: f32, scale: f32) -> GlyphLines {
-        let tolerance_sq = (0.5 / scale).powi(2);
+        let tolerance_sq = (0.5 / scale).powi(2) / 9.0;
         let mut line_segments: Vec<(f32, f32, f32, f32)> = Vec::new();
 
         let mut x_min = f32::MAX;
