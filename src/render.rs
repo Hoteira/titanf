@@ -87,7 +87,7 @@ impl TrueTypeFont {
         glyph.lines.reserve(glyph.points.len() * 4);
         glyph.build_lines::<true>(self.head.units_per_em as f32, scale);
 
-        (metrics, glyph.v_lines, glyph.m_lines, glyph.lines
+        (metrics, glyph.v_lines, glyph.m_lines, glyph.lines)
 
     }
 }
