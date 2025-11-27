@@ -3,36 +3,36 @@ use crate::vec;
 use crate::Vec;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Line {
-    pub(crate) x0: f32,
-    pub(crate) x1: f32,
-    pub(crate) y0: f32,
-    pub(crate) y1: f32,
+pub struct Line {
+    pub x0: f32,
+    pub x1: f32,
+    pub y0: f32,
+    pub y1: f32,
 
-    pub(crate) dx: f32,
-    pub(crate) dy: f32,
+    pub dx: f32,
+    pub dy: f32,
 
-    pub(crate) dx_sign: i32,
-    pub(crate) dy_sign: i32,
+    pub dx_sign: i32,
+    pub dy_sign: i32,
 
-    pub(crate) dt_dx: f32,
-    pub(crate) dt_dy: f32,
+    pub dt_dx: f32,
+    pub dt_dy: f32,
 
-    pub(crate) is_degen: bool,
+    pub is_degen: bool,
 
-    pub(crate) abs_dx: f32,
-    pub(crate) abs_dy: f32,
+    pub abs_dx: f32,
+    pub abs_dy: f32,
 
-    pub(crate) dx_is_zero: bool,
-    pub(crate) dy_is_zero: bool,
+    pub dx_is_zero: bool,
+    pub dy_is_zero: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Bounds {
-    pub(crate) _x: f32,
-    pub(crate) _y: f32,
-    pub(crate) width: f32,
-    pub(crate) height: f32,
+pub struct Bounds {
+    pub _x: f32,
+    pub _y: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 impl Default for Bounds {
@@ -46,13 +46,13 @@ impl Default for Bounds {
     }
 }
 
-struct Segment {
-    a_x: f32,
-    a_y: f32,
-    at: f32,
-    c_x: f32,
-    c_y: f32,
-    ct: f32,
+pub struct Segment {
+    pub a_x: f32,
+    pub a_y: f32,
+    pub at: f32,
+    pub c_x: f32,
+    pub c_y: f32,
+    pub ct: f32,
 }
 
 impl Segment {
@@ -62,7 +62,7 @@ impl Segment {
 }
 
 impl Glyph {
-    pub(crate) fn build_lines(&mut self, units_per_em: f32, scale: f32) {
+    pub(crate) fn build_lines<const COMPLETE: bool>(&mut self, units_per_em: f32, scale: f32) {
         let max_area = 3.0 * 2.0 * (units_per_em / scale);
         let mut line_segments: Vec<(f32, f32, f32, f32)> = Vec::new();
 
@@ -127,15 +127,28 @@ impl Glyph {
             }
         }
 
-        for (x0, y0, x1, y1) in line_segments {
-            self.insert_line(x0, y0, x1, y1, scale);
-        }
+        if COMPLETE {
+            for (x0, y0, x1, y1) in line_segments {
+                self.insert_complete_line(x0, y0, x1, y1, scale);
+            }
 
-        for line in self.v_lines.iter_mut().chain(self.m_lines.iter_mut()) {
-            line.x0 -= x_min;
-            line.y0 -= y_min;
-            line.x1 -= x_min;
-            line.y1 -= y_min;
+            for line in self.v_lines.iter_mut().chain(self.m_lines.iter_mut()).chain(self.lines.iter_mut()) {
+                line.x0 -= x_min;
+                line.y0 -= y_min;
+                line.x1 -= x_min;
+                line.y1 -= y_min;
+            }
+        } else {
+            for (x0, y0, x1, y1) in line_segments {
+                self.insert_line(x0, y0, x1, y1, scale);
+            }
+
+            for line in self.v_lines.iter_mut().chain(self.m_lines.iter_mut()) {
+                line.x0 -= x_min;
+                line.y0 -= y_min;
+                line.x1 -= x_min;
+                line.y1 -= y_min;
+            }
         }
 
         let width = x_max - x_min;
@@ -173,12 +186,17 @@ impl Glyph {
         };
     }
 
-    fn flatten_quad(p0_x: f32, p0_y: f32, p1_x: f32, p1_y: f32, p2_x: f32, p2_y: f32, max_area: f32, output: &mut Vec<(f32, f32, f32, f32)>) {
+    fn flatten_quad(
+        p0_x: f32, p0_y: f32,
+        p1_x: f32, p1_y: f32,
+        p2_x: f32, p2_y: f32,
+        max_area: f32,
+        output: &mut Vec<(f32, f32, f32, f32)>
+    ) {
         let mut stack = vec![Segment::new(p0_x, p0_y, 0.0, p2_x, p2_y, 1.0)];
 
         while let Some(seg) = stack.pop() {
             let bt = (seg.at + seg.ct) * 0.5;
-
             let tm = 1.0 - bt;
             let a = tm * tm;
             let b = 2.0 * tm * bt;
@@ -189,8 +207,9 @@ impl Glyph {
             let area = (b_x - seg.a_x) * (seg.c_y - seg.a_y) - (seg.c_x - seg.a_x) * (b_y - seg.a_y);
 
             if area.abs() > max_area {
-                stack.push(Segment::new(seg.a_x, seg.a_y, seg.at, b_x, b_y, bt));
                 stack.push(Segment::new(b_x, b_y, bt, seg.c_x, seg.c_y, seg.ct));
+
+                stack.push(Segment::new(seg.a_x, seg.a_y, seg.at, b_x, b_y, bt));
             } else {
                 output.push((seg.a_x, seg.a_y, seg.c_x, seg.c_y));
             }
@@ -223,6 +242,38 @@ impl Glyph {
             dx_is_zero: dx == 0.0,
             dy_is_zero: dy == 0.0,
         };
+
+        if x0 == x1 {
+            self.v_lines.push(line);
+        } else {
+            self.m_lines.push(line);
+        }
+    }
+
+    pub(crate) fn insert_complete_line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, scale: f32) {
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let is_degen = dx == 0.0 && dy == 0.0;
+
+        let line = Line {
+            x0: x0 * scale,
+            y0: y0 * scale,
+            x1: x1 * scale,
+            y1: y1 * scale,
+            dx: dx * scale,
+            dy: dy * scale,
+            dx_sign: if dx != 0.0 { dx.signum() as i32 } else { 0 },
+            dy_sign: if dy != 0.0 { dy.signum() as i32 } else { 0 },
+            dt_dx: if dx != 0.0 { 1.0 / (dx * scale).abs() } else { f32::MAX },
+            dt_dy: if dy != 0.0 { 1.0 / (dy * scale).abs() } else { f32::MAX },
+            is_degen,
+            abs_dx: (dx * scale).abs(),
+            abs_dy: (dy * scale).abs(),
+            dx_is_zero: dx == 0.0,
+            dy_is_zero: dy == 0.0,
+        };
+
+        self.lines.push(line.clone());
 
         if x0 == x1 {
             self.v_lines.push(line);

@@ -64,6 +64,7 @@ pub struct Glyph {
 
     pub v_lines: Vec<Line>,
     pub m_lines: Vec<Line>,
+    pub lines: Vec<Line>,
 
     pub y_max: f32,
     pub bounds: Bounds,
@@ -85,6 +86,7 @@ impl ProtoGlyph {
 
                     v_lines: Vec::new(),
                     m_lines: Vec::new(),
+                    lines: Vec::new(),
 
                     y_max: *y_max as f32,
                     bounds: Bounds::default(),
@@ -105,6 +107,7 @@ impl Glyph {
 
             v_lines: Vec::new(),
             m_lines: Vec::new(),
+            lines: Vec::new(),
 
             y_max: 0.0,
             bounds: Bounds::default(),

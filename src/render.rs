@@ -2,6 +2,7 @@
 use crate::F32NoStd;
 
 use crate::font::TrueTypeFont;
+use crate::preprocess::lines::Line;
 use crate::rasterizer::dda;
 use crate::Vec;
 
@@ -33,7 +34,7 @@ impl TrueTypeFont {
 
         glyph.m_lines.reserve(glyph.points.len() * 3);
         glyph.v_lines.reserve(glyph.points.len() * 3);
-        glyph.build_lines(self.head.units_per_em as f32, scale);
+        glyph.build_lines::<false>(self.head.units_per_em as f32, scale);
 
         let width = (scale * glyph.bounds.width).ceil() as usize + 1;
         let height = (scale * glyph.bounds.height).ceil() as usize;
@@ -55,5 +56,23 @@ impl TrueTypeFont {
         }
 
         (metrics, bitmap)
+    }
+
+    pub fn get_char_lines(&self, c: char, size: f32) -> (Vec<Line>, Vec<Line>, Vec<Line>) {
+
+        let scale = size * (self.dpi / 72.0) / self.head.units_per_em as f32;
+        let id = self.glyph_id_table.get(&c).unwrap_or(&0);
+
+        let mut glyph = self
+            .glyph_data_table
+            .get(&id)
+            .unwrap_or(self.glyph_data_table.get(&0).unwrap()).clone();
+
+        glyph.m_lines.reserve(glyph.points.len() * 3);
+        glyph.v_lines.reserve(glyph.points.len() * 3);
+        glyph.build_lines::<true>(self.head.units_per_em as f32, scale);
+
+        (glyph.v_lines, glyph.m_lines, glyph.lines)
+
     }
 }
