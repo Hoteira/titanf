@@ -205,7 +205,6 @@ impl Glyph {
             let b_y = a * p0_y + b * p1_y + c * p2_y;
 
             let area = (b_x - seg.a_x) * (seg.c_y - seg.a_y) - (seg.c_x - seg.a_x) * (b_y - seg.a_y);
-
             if area.abs() > max_area {
                 stack.push(Segment::new(b_x, b_y, bt, seg.c_x, seg.c_y, seg.ct));
 
