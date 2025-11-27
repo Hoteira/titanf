@@ -1,6 +1,6 @@
 [package]
 name = "titanf"
-version = "1.3.5"
+version = "1.3.6"
 authors = ["Hoteira <hoteira@proton.me"]
 edition = "2024"
 license = "MIT"
