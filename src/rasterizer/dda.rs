@@ -154,7 +154,9 @@ impl Rasterizer {
         let mut acc = 0.0f32;
         for i in 0..self.width * self.height {
             acc += self.coverage_buffer[i];
-            out[i] = (acc.abs().clamp(0.0, 1.0) * 255.0) as u8;
+            let val = acc.abs();
+            let val = if val > 1.0 { 1.0 } else { val };
+            out[i] = (val * 255.0) as u8;
         }
         out
     }

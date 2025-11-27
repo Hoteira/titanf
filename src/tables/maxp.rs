@@ -20,6 +20,8 @@ pub(crate) struct MaxpTable {
     pub(crate) max_component_depth: u16,
 }
 
+use crate::font::FontError;
+
 impl MaxpTable {
     pub(crate) fn new() -> Self {
         MaxpTable {
@@ -44,7 +46,7 @@ impl MaxpTable {
 }
 
 impl TrueTypeFont {
-    pub(crate) fn load_maxp(&mut self, font_bytes: &[u8]) {
+    pub(crate) fn load_maxp(&mut self, font_bytes: &[u8]) -> Result<(), FontError> {
         for table in &self.tables {
             if table.table_tag == "maxp".as_bytes() {
                 let offset = table.offset as usize;
@@ -68,10 +70,10 @@ impl TrueTypeFont {
                     max_component_depth: get_u16_be(font_bytes, offset + 30),
                 };
 
-                return;
+                return Ok(());
             }
         }
 
-        panic!("MAXP table not found");
+        Err(FontError::TableNotFound("maxp"))
     }
 }

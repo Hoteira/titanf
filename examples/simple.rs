@@ -2,7 +2,7 @@ use titanf::TrueTypeFont;
 
 pub fn main() {
     let font_data = include_bytes!("../Roboto-Medium.ttf");
-    let mut font = TrueTypeFont::load_font(font_data);
+    let mut font = TrueTypeFont::load_font(font_data).unwrap();
 
     font.set_dpi(96.0); //Set your screen's DPI (Default is 72)
 

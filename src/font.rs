@@ -44,6 +44,28 @@ impl TableRecord {
 }
 
 
+#[derive(Debug, Clone, Copy)]
+pub enum FontError {
+    InvalidFile,
+    TableNotFound(&'static str),
+    UnexpectedEndOfFile,
+}
+
+#[cfg(feature = "std")]
+impl std::fmt::Display for FontError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            FontError::InvalidFile => write!(f, "Invalid font file"),
+            FontError::TableNotFound(t) => write!(f, "Table not found: {}", t),
+            FontError::UnexpectedEndOfFile => write!(f, "Unexpected end of file"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for FontError {}
+
+
 pub struct TrueTypeFont {
     pub(crate) offset_table: OffsetTable,
     pub(crate) tables: Vec<TableRecord>,
@@ -102,7 +124,7 @@ impl TrueTypeFont {
         self.dpi = dpi;
     }
 
-    pub(crate) fn load_offset_table(&mut self, font_bytes: &[u8]) {
+    pub(crate) fn load_offset_table(&mut self, font_bytes: &[u8]) -> Result<(), FontError> {
         if font_bytes.len() >= 12 {
             self.offset_table = OffsetTable {
                 _scaler_type: get_u32_be(font_bytes, 0),
@@ -110,16 +132,21 @@ impl TrueTypeFont {
                 _search_range: get_u16_be(font_bytes, 6),
                 _entry_selector: get_u16_be(font_bytes, 8),
                 _range_shift: get_u16_be(font_bytes, 10),
-            }
+            };
+            Ok(())
         } else {
-            panic!("Invalid font file");
+            Err(FontError::InvalidFile)
         }
     }
 
-    pub(crate) fn load_tables(&mut self, font_bytes: &[u8]) {
+    pub(crate) fn load_tables(&mut self, font_bytes: &[u8]) -> Result<(), FontError> {
         let mut offset = size_of::<OffsetTable>();
 
         for _i in 0..self.offset_table.num_tables {
+            if offset + 16 > font_bytes.len() {
+                return Err(FontError::UnexpectedEndOfFile);
+            }
+            
             let table = TableRecord {
                 table_tag: [font_bytes[offset], font_bytes[offset + 1], font_bytes[offset + 2], font_bytes[offset + 3]],
                 check_sum: get_u32_be(font_bytes, offset + 4),
@@ -130,26 +157,27 @@ impl TrueTypeFont {
             self.tables.push(table);
             offset += size_of::<TableRecord>();
         }
+        Ok(())
     }
 
-    pub fn load_font(font_bytes: &[u8]) -> Self {
+    pub fn load_font(font_bytes: &[u8]) -> Result<Self, FontError> {
         let mut font = Self::new();
 
 
-        font.load_offset_table(&font_bytes);
-        font.load_tables(&font_bytes);
+        font.load_offset_table(&font_bytes)?;
+        font.load_tables(&font_bytes)?;
 
-        font.load_cmap(&font_bytes);
+        font.load_cmap(&font_bytes)?;
         font.load_cmap_encodings(&font_bytes);
         font.load_cmap_subtable_formats(&font_bytes);
         font.load_cmap_subtables(&font_bytes);
-        font.load_hhea(&font_bytes);
+        font.load_hhea(&font_bytes)?;
 
-        font.load_head(&font_bytes);
-        font.load_maxp(&font_bytes);
-        font.load_loca(&font_bytes);
-        font.load_glyf();
-        font.load_hmtx(&font_bytes);
+        font.load_head(&font_bytes)?;
+        font.load_maxp(&font_bytes)?;
+        font.load_loca(&font_bytes)?;
+        font.load_glyf()?;
+        font.load_hmtx(&font_bytes)?;
 
         font.cache_all_glyphs(&font_bytes);
         font.load_kerning_pairs(&font_bytes);
@@ -161,30 +189,34 @@ impl TrueTypeFont {
         font.loca = LocaTable::Short(Vec::new());
         font.maxp = MaxpTable::new();
 
-        font
+        Ok(font)
     }
 }
 
 #[inline]
 pub fn get_u32_be(base: &[u8], offset: usize) -> u32 {
+    if offset + 4 > base.len() { return 0; }
     let bytes = &base[offset..offset + 4];
     u32::from_be_bytes(bytes.try_into().expect("slice with incorrect length"))
 }
 
 #[inline]
 pub fn get_u16_be(base: &[u8], offset: usize) -> u16 {
+    if offset + 2 > base.len() { return 0; }
     let bytes = &base[offset..offset + 2];
     u16::from_be_bytes(bytes.try_into().expect("slice with incorrect length"))
 }
 
 #[inline]
 pub fn get_i16_be(base: &[u8], offset: usize) -> i16 {
+    if offset + 2 > base.len() { return 0; }
     let bytes = &base[offset..offset + 2];
     i16::from_be_bytes(bytes.try_into().expect("slice with incorrect length"))
 }
 
 #[inline]
 pub fn get_i64_be(base: &[u8], offset: usize) -> i64 {
+    if offset + 8 > base.len() { return 0; }
     let bytes = &base[offset..offset + 8];
     i64::from_be_bytes(bytes.try_into().expect("slice with incorrect length"))
 }

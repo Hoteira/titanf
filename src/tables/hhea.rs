@@ -26,6 +26,8 @@ pub(crate) struct HheaTable {
     pub number_of_h_metrics: u16,
 }
 
+use crate::font::FontError;
+
 impl HheaTable {
     pub(crate) fn new() -> Self {
         HheaTable {
@@ -52,7 +54,7 @@ impl HheaTable {
 }
 
 impl TrueTypeFont {
-    pub(crate) fn load_hhea(&mut self, font_bytes: &[u8]) {
+    pub(crate) fn load_hhea(&mut self, font_bytes: &[u8]) -> Result<(), FontError> {
         for table in &self.tables {
             if table.table_tag == "hhea".as_bytes() {
                 let offset = table.offset as usize;
@@ -77,10 +79,10 @@ impl TrueTypeFont {
                     number_of_h_metrics: get_u16_be(font_bytes, offset + 34),
                 };
 
-                return;
+                return Ok(());
             }
         }
 
-        panic!("HHEA table not found");
+        Err(FontError::TableNotFound("hhea"))
     }
 }

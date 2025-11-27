@@ -12,8 +12,10 @@ pub(crate) enum LocaTable {
     Long(Vec<u32>),
 }
 
+use crate::font::FontError;
+
 impl TrueTypeFont {
-    pub(crate) fn load_loca(&mut self, font_bytes: &[u8]) {
+    pub(crate) fn load_loca(&mut self, font_bytes: &[u8]) -> Result<(), FontError> {
         for table in &self.tables {
             if table.table_tag == "loca".as_bytes() {
                 match self.head.index_to_loc_format {
@@ -44,10 +46,10 @@ impl TrueTypeFont {
                     _ => {}
                 }
 
-                return;
+                return Ok(());
             }
         }
 
-        panic!("LOCA table not found!");
+        Err(FontError::TableNotFound("loca"))
     }
 }

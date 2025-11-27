@@ -115,6 +115,8 @@ pub struct SequentialMapGroup {
     pub start_glyph_id: u32,
 }
 
+use crate::font::FontError;
+
 impl CmapTable {
     pub fn new() -> CmapTable {
         CmapTable {
@@ -125,10 +127,96 @@ impl CmapTable {
             subtables: Vec::new(),
         }
     }
+
+    pub fn get_glyph_id(&self, codepoint: char) -> u32 {
+        if self.subtables.is_empty() {
+            return 0;
+        }
+
+        let codepoint = codepoint as u32;
+
+        match &self.subtables[0] {
+            SupportedCmapFormats::Format0 { data, .. } => {
+                if codepoint < 256 {
+                    data.glyph_id_array[codepoint as usize] as u32
+                } else {
+                    0
+                }
+            }
+
+            SupportedCmapFormats::Format4 { data, .. } => {
+                match data.end_count.binary_search(&(codepoint as u16)) {
+                    Ok(i) | Err(i) if i < data.end_count.len() && codepoint as u16 >= data.start_count[i] => {
+                        if data.id_range_offset[i] == 0 {
+                            ((codepoint as i32 + data.id_delta[i] as i32) as u32) & 0xFFFF
+                        } else {
+                            let seg_count = data.seg_count_x2 / 2;
+                            let index = (data.id_range_offset[i] / 2 +
+                                (codepoint as u16 - data.start_count[i]) -
+                                (seg_count - i as u16)) as usize;
+                            if index < data.glyph_id_array.len() {
+                                let gid = data.glyph_id_array[index];
+                                if gid != 0 {
+                                    ((gid as i32 + data.id_delta[i] as i32) as u32) & 0xFFFF
+                                } else {
+                                    0
+                                }
+                            } else {
+                                0
+                            }
+                        }
+                    }
+                    _ => 0
+                }
+            }
+
+            SupportedCmapFormats::Format6 { data, .. } => {
+                let index = codepoint as u16;
+                if index >= data.first_code && index < data.first_code + data.entry_count {
+                    let array_index = (index - data.first_code) as usize;
+                    if array_index < data.glyph_id_array.len() {
+                        data.glyph_id_array[array_index] as u32
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            }
+
+            SupportedCmapFormats::Format12 { data, .. } => {
+                if data.groups.is_empty() || data.num_groups as usize != data.groups.len() {
+                    0
+                } else {
+                    match data.groups.binary_search_by_key(&codepoint, |g| g.end_char_code) {
+                        Ok(i) => {
+                            let group = &data.groups[i];
+                            if codepoint >= group.start_char_code {
+                                let glyph_offset = codepoint - group.start_char_code;
+                                group.start_glyph_id.wrapping_add(glyph_offset)
+                            } else {
+                                0
+                            }
+                        }
+                        Err(i) if i > 0 => {
+                            let group = &data.groups[i - 1];
+                            if codepoint >= group.start_char_code && codepoint <= group.end_char_code {
+                                let glyph_offset = codepoint - group.start_char_code;
+                                group.start_glyph_id.wrapping_add(glyph_offset)
+                            } else {
+                                0
+                            }
+                        }
+                        _ => 0
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl TrueTypeFont {
-    pub fn load_cmap(&mut self, font_bytes: &[u8]) {
+    pub fn load_cmap(&mut self, font_bytes: &[u8]) -> Result<(), FontError> {
         for table in &self.tables {
             if table.table_tag == "cmap".as_bytes() {
                 self.cmap.offset = table.offset as usize;
@@ -136,11 +224,11 @@ impl TrueTypeFont {
                     _version: get_u16_be(font_bytes, self.cmap.offset),
                     num_tables: get_u16_be(font_bytes, self.cmap.offset + 2),
                 };
-                return;
+                return Ok(());
             }
         }
 
-        panic!("CMAP table not found");
+        Err(FontError::TableNotFound("cmap"))
     }
 
     pub fn load_cmap_encodings(&mut self, font_bytes: &[u8]) {
@@ -314,87 +402,5 @@ impl TrueTypeFont {
         });
 
         self.cmap.subtables.truncate(1);
-    }
-
-    pub fn get_glyph_id(&self, codepoint: char) -> u32 {
-        let codepoint = codepoint as u32;
-
-        match &self.cmap.subtables[0] {
-            SupportedCmapFormats::Format0 { data, .. } => {
-                if codepoint < 256 {
-                    data.glyph_id_array[codepoint as usize] as u32
-                } else {
-                    0
-                }
-            }
-
-            SupportedCmapFormats::Format4 { data, .. } => {
-                match data.end_count.binary_search(&(codepoint as u16)) {
-                    Ok(i) | Err(i) if i < data.end_count.len() && codepoint as u16 >= data.start_count[i] => {
-                        if data.id_range_offset[i] == 0 {
-                            ((codepoint as i32 + data.id_delta[i] as i32) as u32) & 0xFFFF
-                        } else {
-                            let seg_count = data.seg_count_x2 / 2;
-                            let index = (data.id_range_offset[i] / 2 +
-                                (codepoint as u16 - data.start_count[i]) -
-                                (seg_count - i as u16)) as usize;
-                            if index < data.glyph_id_array.len() {
-                                let gid = data.glyph_id_array[index];
-                                if gid != 0 {
-                                    ((gid as i32 + data.id_delta[i] as i32) as u32) & 0xFFFF
-                                } else {
-                                    0
-                                }
-                            } else {
-                                0
-                            }
-                        }
-                    }
-                    _ => 0
-                }
-            }
-
-            SupportedCmapFormats::Format6 { data, .. } => {
-                let index = codepoint as u16;
-                if index >= data.first_code && index < data.first_code + data.entry_count {
-                    let array_index = (index - data.first_code) as usize;
-                    if array_index < data.glyph_id_array.len() {
-                        data.glyph_id_array[array_index] as u32
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                }
-            }
-
-            SupportedCmapFormats::Format12 { data, .. } => {
-                if data.groups.is_empty() || data.num_groups as usize != data.groups.len() {
-                    0
-                } else {
-                    match data.groups.binary_search_by_key(&codepoint, |g| g.end_char_code) {
-                        Ok(i) => {
-                            let group = &data.groups[i];
-                            if codepoint >= group.start_char_code {
-                                let glyph_offset = (codepoint - group.start_char_code);
-                                group.start_glyph_id.wrapping_add(glyph_offset)
-                            } else {
-                                0
-                            }
-                        }
-                        Err(i) if i > 0 => {
-                            let group = &data.groups[i - 1];
-                            if codepoint >= group.start_char_code && codepoint <= group.end_char_code {
-                                let glyph_offset = (codepoint - group.start_char_code);
-                                group.start_glyph_id.wrapping_add(glyph_offset)
-                            } else {
-                                0
-                            }
-                        }
-                        _ => 0
-                    }
-                }
-            }
-        }
     }
 }

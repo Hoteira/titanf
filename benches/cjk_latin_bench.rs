@@ -14,7 +14,7 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
 
     // Load fonts
     let font_data = std::fs::read("NotoSansSC-Medium.ttf").expect("Failed to load font");
-    let mut font_0 = TrueTypeFont::load_font(&font_data);
+    let mut font_0 = TrueTypeFont::load_font(&font_data).ok().unwrap();
     let font_1 = fontdue::Font::from_bytes(&font_data as &[u8], Default::default()).unwrap();
     let font_2 = rusttype::Font::try_from_vec(font_data.clone()).unwrap();
     let font_3 = ab_glyph::FontRef::try_from_slice(&font_data).unwrap();

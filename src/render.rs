@@ -27,17 +27,15 @@ impl TrueTypeFont {
             }
         }
 
-        let mut glyph = self
+        let glyph = self
             .glyph_data_table
             .get(&id)
-            .unwrap_or(self.glyph_data_table.get(&0).unwrap()).clone();
+            .unwrap_or(self.glyph_data_table.get(&0).unwrap());
 
-        glyph.m_lines.reserve(glyph.points.len() * 3);
-        glyph.v_lines.reserve(glyph.points.len() * 3);
-        glyph.build_lines::<false>(self.head.units_per_em as f32, scale);
+        let glyph_lines = glyph.build_lines::<false>(self.head.units_per_em as f32, scale);
 
-        let width = (scale * glyph.bounds.width).ceil() as usize + 1;
-        let height = (scale * glyph.bounds.height).ceil() as usize;
+        let width = (scale * glyph_lines.bounds.width).ceil() as usize + 1;
+        let height = (scale * glyph_lines.bounds.height).ceil() as usize;
         let baseline = -(scale * glyph.y_max) as isize;
 
         let metrics = self.get_metrics(id, scale);
@@ -50,7 +48,7 @@ impl TrueTypeFont {
         };
 
 
-        let bitmap = dda::Rasterizer::new(width, height).draw(&glyph.v_lines, &glyph.m_lines).to_bitmap();
+        let bitmap = dda::Rasterizer::new(width, height).draw(&glyph_lines.v_lines, &glyph_lines.m_lines).to_bitmap();
         if CACHE {
             self.cache.set(*id, size, metrics.clone(), bitmap.clone());
         }
@@ -63,15 +61,17 @@ impl TrueTypeFont {
         let scale = size * (self.dpi / 72.0) / self.head.units_per_em as f32;
         let id = self.glyph_id_table.get(&c).unwrap_or(&0);
 
-        let mut glyph = self
+        let glyph = self
             .glyph_data_table
             .get(&id)
-            .unwrap_or(self.glyph_data_table.get(&0).unwrap()).clone();
+            .unwrap_or(self.glyph_data_table.get(&0).unwrap());
 
         let metrics = self.get_metrics(id, scale);
 
-        let width = (scale * glyph.bounds.width).ceil() as usize + 1;
-        let height = (scale * glyph.bounds.height).ceil() as usize;
+        let glyph_lines = glyph.build_lines::<true>(self.head.units_per_em as f32, scale);
+
+        let width = (scale * glyph_lines.bounds.width).ceil() as usize + 1;
+        let height = (scale * glyph_lines.bounds.height).ceil() as usize;
         let baseline = -(scale * glyph.y_max) as isize;
 
         let metrics = Metrics {
@@ -82,12 +82,7 @@ impl TrueTypeFont {
             base_line: baseline,
         };
 
-        glyph.m_lines.reserve(glyph.points.len() * 3);
-        glyph.v_lines.reserve(glyph.points.len() * 3);
-        glyph.lines.reserve(glyph.points.len() * 4);
-        glyph.build_lines::<true>(self.head.units_per_em as f32, scale);
-
-        (metrics, glyph.v_lines, glyph.m_lines, glyph.lines)
+        (metrics, glyph_lines.v_lines, glyph_lines.m_lines, glyph_lines.lines)
 
     }
 }

@@ -1,5 +1,4 @@
 use crate::font::{get_i16_be, get_u16_be, TrueTypeFont};
-use crate::preprocess::lines::{Bounds, Line};
 use crate::preprocess::points::Contour;
 use crate::tables::cmap::SupportedCmapFormats::{Format0, Format12, Format4, Format6};
 use crate::tables::glyf::ProtoGlyph::{Composite, Simple};
@@ -62,12 +61,7 @@ pub(crate) struct CompositeComponent {
 pub struct Glyph {
     pub points: Vec<Contour>,
 
-    pub v_lines: Vec<Line>,
-    pub m_lines: Vec<Line>,
-    pub lines: Vec<Line>,
-
     pub y_max: f32,
-    pub bounds: Bounds,
 }
 
 #[derive(Debug, Clone)]
@@ -84,12 +78,7 @@ impl ProtoGlyph {
                 Glyph {
                     points: points.clone(),
 
-                    v_lines: Vec::new(),
-                    m_lines: Vec::new(),
-                    lines: Vec::new(),
-
                     y_max: *y_max as f32,
-                    bounds: Bounds::default(),
                 }
             }
 
@@ -105,12 +94,7 @@ impl Glyph {
         Glyph {
             points: Vec::new(),
 
-            v_lines: Vec::new(),
-            m_lines: Vec::new(),
-            lines: Vec::new(),
-
             y_max: 0.0,
-            bounds: Bounds::default(),
         }
     }
 }
@@ -157,17 +141,19 @@ impl ProtoGlyph {
     }
 }
 
+use crate::font::FontError;
+
 impl TrueTypeFont {
-    pub(crate) fn load_glyf(&mut self) {
+    pub(crate) fn load_glyf(&mut self) -> Result<(), FontError> {
         for table in &self.tables {
             if table.table_tag == "glyf".as_bytes() {
                 self.glyf = *table;
 
-                return;
+                return Ok(());
             }
         }
 
-        panic!("GLYF table not found");
+        Err(FontError::TableNotFound("glyf"))
     }
 
     pub(crate) fn get_glyph(&self, font_bytes: &[u8], glyph_id: u32) -> ProtoGlyph {
@@ -374,6 +360,10 @@ impl TrueTypeFont {
     }
 
     pub(crate) fn cache_all_glyphs(&mut self, font_bytes: &[u8]) {
+        if self.cmap.subtables.is_empty() {
+            return;
+        }
+
         match &self.cmap.subtables[0] {
             Format0 { data, .. } => {
                 let mut glyph_data = self.get_glyph(font_bytes, 0);
@@ -402,7 +392,7 @@ impl TrueTypeFont {
 
                     for codepoint in start..=end {
                         if let Some(ch) = char::from_u32(codepoint as u32) {
-                            let glyph_id = self.get_glyph_id(ch);
+                            let glyph_id = self.cmap.get_glyph_id(ch);
                             let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
 
                             if glyph_id != 0 {

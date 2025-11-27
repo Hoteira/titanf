@@ -13,6 +13,8 @@ pub(crate) struct LongHorMetric {
     pub(crate) left_side_bearing: i16,
 }
 
+use crate::font::FontError;
+
 impl HmtxTable {
     pub(crate) fn new() -> HmtxTable {
         HmtxTable {
@@ -23,7 +25,7 @@ impl HmtxTable {
 }
 
 impl TrueTypeFont {
-    pub(crate) fn load_hmtx(&mut self, font_bytes: &[u8]) {
+    pub(crate) fn load_hmtx(&mut self, font_bytes: &[u8]) -> Result<(), FontError> {
         for table in &self.tables {
             if table.table_tag == "hmtx".as_bytes() {
                 let table_offset = table.offset as usize;
@@ -33,7 +35,7 @@ impl TrueTypeFont {
 
                 for _ in 0..self.hhea.number_of_h_metrics {
                     if offset + 4 > font_bytes.len() {
-                        return;
+                        return Err(FontError::UnexpectedEndOfFile);
                     }
 
                     h_metrics.push(LongHorMetric {
@@ -46,7 +48,7 @@ impl TrueTypeFont {
                 let mut left_side_bearings = Vec::new();
                 for _ in self.hhea.number_of_h_metrics..self.maxp.num_glyphs {
                     if offset + 2 > font_bytes.len() {
-                        return;
+                        return Err(FontError::UnexpectedEndOfFile);
                     }
 
                     left_side_bearings.push(i16::from_be_bytes([font_bytes[offset], font_bytes[offset + 1]]));
@@ -54,11 +56,11 @@ impl TrueTypeFont {
                 }
 
                 self.hmtx = HmtxTable { h_metrics, left_side_bearings };
-                return;
+                return Ok(());
             }
         }
 
-        panic!("HMTX table not found");
+        Err(FontError::TableNotFound("hmtx"))
     }
 
 

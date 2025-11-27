@@ -12,9 +12,9 @@
 //! use titanf::TrueTypeFont;
 //!
 //! let font_data = include_bytes!("Roboto-Medium.ttf");
-//! let mut font = TrueTypeFont::load_font(font_data);
+//! let mut font = TrueTypeFont::load_font(font_data).unwrap();
 //!
-//! let (metrics, bitmap) = font.get_char::<false>('A', 16);
+//! let (metrics, bitmap) = font.get_char::<false>('A', 16.0);
 //! //                                      ^^^^^ turn caching on/off
 //! ```
 //!

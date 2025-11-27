@@ -28,6 +28,8 @@ pub(crate) struct HeadTable {
     pub(crate) glyph_data_format: i16,
 }
 
+use crate::font::FontError;
+
 impl HeadTable {
     pub(crate) fn new() -> Self {
         HeadTable {
@@ -54,7 +56,7 @@ impl HeadTable {
 }
 
 impl TrueTypeFont {
-    pub(crate) fn load_head(&mut self, font_bytes: &[u8]) {
+    pub(crate) fn load_head(&mut self, font_bytes: &[u8]) -> Result<(), FontError> {
         for table in &self.tables {
             if table.table_tag == "head".as_bytes() {
                 let offset = table.offset as usize;
@@ -80,10 +82,10 @@ impl TrueTypeFont {
                     glyph_data_format: get_i16_be(font_bytes, offset + 52),
                 };
 
-                return;
+                return Ok(());
             }
         }
 
-        panic!("HEAD table not found!");
+        Err(FontError::TableNotFound("head"))
     }
 }
