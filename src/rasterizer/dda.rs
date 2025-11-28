@@ -2,7 +2,6 @@
 use crate::F32NoStd;
 
 use crate::preprocess::lines::Line;
-use crate::tables::glyf::Glyph;
 use crate::vec;
 use crate::Vec;
 
@@ -17,7 +16,21 @@ impl Rasterizer {
         Self { width, height, coverage_buffer: vec![0.0; width * height + 1] }
     }
 
-    pub fn draw(mut self, v_lines: &[Line], m_lines: &[Line]) -> Self {
+    pub fn with_capacity(width: usize, height: usize) -> Self {
+         Self { width, height, coverage_buffer: Vec::with_capacity(width * height + 1) }
+    }
+
+    pub fn reset(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
+        let len = width * height + 1;
+        if self.coverage_buffer.len() < len {
+            self.coverage_buffer.resize(len, 0.0);
+        }
+        self.coverage_buffer[..len].fill(0.0);
+    }
+
+    pub fn draw(&mut self, v_lines: &[Line], m_lines: &[Line]) -> &mut Self {
         for line in v_lines {
             self.v_line(line);
         }
@@ -30,10 +43,14 @@ impl Rasterizer {
     }
 
     fn v_line(&mut self, line: &Line) {
+        let x = line.x0 as i32;
+        // Optimization: Vertical lines have constant X. If out of bounds, skip entirely.
+        if x < 0 || x >= self.width as i32 {
+            return;
+        }
 
-        let x = line.x0.floor() as i32;
-        let mut y = line.y0.floor() as i32;
-        let y_end = line.y1.floor() as i32;
+        let mut y = line.y0 as i32;
+        let y_end = line.y1 as i32;
 
         let mut y_cross = if line.dy_sign > 0 { y as f32 + 1.0 } else { y as f32 };
         let mut y_prev = line.y0;
@@ -41,7 +58,8 @@ impl Rasterizer {
         let mid_x = (line.x0 - x as f32).clamp(0.0, 1.0);
 
         loop {
-            if x >= 0 && x < self.width as i32 && y >= 0 && y < self.height as i32 {
+            // X check removed as it's checked above
+            if y >= 0 && y < self.height as i32 {
                 let idx = (x + y * self.width as i32) as usize;
                 unsafe { self.add_coverage(idx, (y_prev - y_cross).clamp(-1.0, 1.0), mid_x); }
                 y_prev = y_cross;
@@ -55,7 +73,7 @@ impl Rasterizer {
             y_cross += line.dy_sign as f32;
         }
 
-        if x >= 0 && x < self.width as i32 && y >= 0 && y < self.height as i32 {
+        if y >= 0 && y < self.height as i32 {
             let idx = (x + y * self.width as i32) as usize;
             unsafe { self.add_coverage(idx, (y_prev - line.y1).clamp(-1.0, 1.0), mid_x); }
         }
@@ -73,10 +91,10 @@ impl Rasterizer {
         let dt_dx = line.dt_dx;
         let dt_dy = line.dt_dy;
 
-        let mut x = x0.floor() as i32;
-        let mut y = y0.floor() as i32;
-        let x_end = x1.floor() as i32;
-        let y_end = y1.floor() as i32;
+        let mut x = x0 as i32;
+        let mut y = y0 as i32;
+        let x_end = x1 as i32;
+        let y_end = y1 as i32;
 
         if line.is_degen { return; }
 
@@ -143,8 +161,10 @@ impl Rasterizer {
         let left = height - m;
         let right = m;
 
-        *self.coverage_buffer.get_unchecked_mut(idx) += left;
-        *self.coverage_buffer.get_unchecked_mut(idx + 1) += right;
+        unsafe {
+            *self.coverage_buffer.get_unchecked_mut(idx) += left;
+            *self.coverage_buffer.get_unchecked_mut(idx + 1) += right;
+        }
     }
 
 
@@ -158,10 +178,23 @@ impl Rasterizer {
 
         unsafe {
             for i in 0..len {
-                acc += *buf_ptr.add(i);
+                let delta = *buf_ptr.add(i);
+                acc += delta;
+                
+                if delta == 0.0 {
+                    if acc <= 0.0001 { // Epsilon for float comparison stability
+                        *out_ptr.add(i) = 0;
+                        continue;
+                    } else if acc >= 0.9999 {
+                         *out_ptr.add(i) = 255;
+                         continue;
+                    }
+                }
+
                 let val = acc.abs();
                 let val = if val > 1.0 { 1.0 } else { val };
-                *out_ptr.add(i) = (val * 255.0) as u8;
+                let pixel = (val * 255.0) as u8;
+                *out_ptr.add(i) = if pixel >= 240 { 255 } else { pixel };
             }
         }
         out

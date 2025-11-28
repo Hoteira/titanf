@@ -3,7 +3,6 @@ use crate::F32NoStd;
 
 use crate::font::TrueTypeFont;
 use crate::preprocess::lines::Line;
-use crate::rasterizer::dda;
 use crate::Vec;
 
 #[derive(Clone, Debug)]
@@ -29,13 +28,20 @@ impl TrueTypeFont {
 
         let glyph = self
             .glyph_data_table
-            .get(&id)
-            .unwrap_or(self.glyph_data_table.get(&0).unwrap());
+            .get(*id as usize)
+            .and_then(|opt| opt.as_ref())
+            .or_else(|| self.glyph_data_table.get(0).and_then(|opt| opt.as_ref()))
+            .expect("Glyph 0 missing");
 
-        let glyph_lines = glyph.build_lines::<false>(self.head.units_per_em as f32, scale);
+        glyph.build_lines_into::<false>(
+            self.head.units_per_em as f32,
+            scale,
+            &mut self.lines_scratch,
+            &mut self.segments_scratch,
+        );
 
-        let width = (scale * glyph_lines.bounds.width).ceil() as usize + 1;
-        let height = (scale * glyph_lines.bounds.height).ceil() as usize;
+        let width = (scale * self.lines_scratch.bounds.width).ceil() as usize;
+        let height = (scale * self.lines_scratch.bounds.height).ceil() as usize;
         let baseline = -(scale * glyph.y_max) as isize;
 
         let metrics = self.get_metrics(id, scale);
@@ -48,7 +54,8 @@ impl TrueTypeFont {
         };
 
 
-        let bitmap = dda::Rasterizer::new(width, height).draw(&glyph_lines.v_lines, &glyph_lines.m_lines).to_bitmap();
+        self.rasterizer.reset(width, height);
+        let bitmap = self.rasterizer.draw(&self.lines_scratch.v_lines, &self.lines_scratch.m_lines).to_bitmap();
         if CACHE {
             self.cache.set(*id, size, metrics.clone(), bitmap.clone());
         }
@@ -63,14 +70,16 @@ impl TrueTypeFont {
 
         let glyph = self
             .glyph_data_table
-            .get(&id)
-            .unwrap_or(self.glyph_data_table.get(&0).unwrap());
+            .get(*id as usize)
+            .and_then(|opt| opt.as_ref())
+            .or_else(|| self.glyph_data_table.get(0).and_then(|opt| opt.as_ref()))
+            .expect("Glyph 0 missing");
 
         let metrics = self.get_metrics(id, scale);
 
         let glyph_lines = glyph.build_lines::<true>(self.head.units_per_em as f32, scale);
 
-        let width = (scale * glyph_lines.bounds.width).ceil() as usize + 1;
+        let width = (scale * glyph_lines.bounds.width).ceil() as usize;
         let height = (scale * glyph_lines.bounds.height).ceil() as usize;
         let baseline = -(scale * glyph.y_max) as isize;
 

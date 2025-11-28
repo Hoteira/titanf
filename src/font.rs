@@ -77,12 +77,15 @@ pub struct TrueTypeFont {
     pub(crate) hhea: HheaTable,
     pub(crate) hmtx: HmtxTable,
 
-    pub(crate) glyph_data_table: Map<u32, Glyph>,
+    pub(crate) glyph_data_table: Vec<Option<Glyph>>,
     pub(crate) glyph_id_table: Map<char, u32>,
     pub kern_table: Map<(u32, u32), i16>,
 
     pub cache: crate::cache::Cache,
     pub dpi: f32,
+    pub(crate) rasterizer: crate::rasterizer::dda::Rasterizer,
+    pub(crate) lines_scratch: crate::preprocess::lines::GlyphLines,
+    pub(crate) segments_scratch: Vec<(f32, f32, f32, f32)>,
 }
 
 
@@ -111,12 +114,15 @@ impl TrueTypeFont {
             hhea: HheaTable::new(),
             hmtx: HmtxTable::new(),
 
-            glyph_data_table: Map::new(),
+            glyph_data_table: Vec::new(),
             glyph_id_table: Map::new(),
             kern_table: Map::new(),
 
             cache: crate::cache::Cache::new(),
             dpi: 72.0,
+            rasterizer: crate::rasterizer::dda::Rasterizer::with_capacity(0, 0),
+            lines_scratch: crate::preprocess::lines::GlyphLines::new(),
+            segments_scratch: Vec::new(),
         }
     }
 

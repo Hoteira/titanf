@@ -360,32 +360,43 @@ impl TrueTypeFont {
     }
 
     pub(crate) fn cache_all_glyphs(&mut self, font_bytes: &[u8]) {
+        // Pre-allocate the vector based on num_glyphs
+        if self.maxp.num_glyphs > 0 {
+            self.glyph_data_table.resize(self.maxp.num_glyphs as usize, None);
+        }
+
         if self.cmap.subtables.is_empty() {
             return;
         }
 
+        // Helper to load and insert a glyph if not present
+        // We can't easily use a closure due to borrowing self mutably and immutably.
+        // But we can iterate and load.
+
+        // First, load the "missing glyph" (index 0)
+        if !self.glyph_data_table.is_empty() {
+             let mut glyph_data = self.get_glyph(font_bytes, 0);
+             self.glyph_data_table[0] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+        }
+
         match &self.cmap.subtables[0] {
             Format0 { data, .. } => {
-                let mut glyph_data = self.get_glyph(font_bytes, 0);
-                self.glyph_data_table.insert(0, self.load_points(&mut glyph_data, &self, &font_bytes));
-
                 for codepoint in 0..256 {
                     if let Some(ch) = char::from_u32(codepoint) {
                         let glyph_id = data.glyph_id_array[codepoint as usize] as u32;
-                        let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
-
-                        if glyph_id != 0 {
+                        
+                        if glyph_id != 0 && (glyph_id as usize) < self.glyph_data_table.len() {
+                            if self.glyph_data_table[glyph_id as usize].is_none() {
+                                let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
+                                self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+                            }
                             self.glyph_id_table.insert(ch, glyph_id);
-                            self.glyph_data_table.insert(glyph_id, self.load_points(&mut glyph_data, &self, &font_bytes));
                         }
                     }
                 }
             }
 
             Format4 { data, .. } => {
-                let mut glyph_data = self.get_glyph(font_bytes, 0);
-                self.glyph_data_table.insert(0, self.load_points(&mut glyph_data, &self, &font_bytes));
-
                 for seg_idx in 0..data.seg_count_x2 / 2 {
                     let start = data.start_count[seg_idx as usize];
                     let end = data.end_count[seg_idx as usize];
@@ -393,11 +404,13 @@ impl TrueTypeFont {
                     for codepoint in start..=end {
                         if let Some(ch) = char::from_u32(codepoint as u32) {
                             let glyph_id = self.cmap.get_glyph_id(ch);
-                            let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
-
-                            if glyph_id != 0 {
+                            
+                            if glyph_id != 0 && (glyph_id as usize) < self.glyph_data_table.len() {
+                                if self.glyph_data_table[glyph_id as usize].is_none() {
+                                    let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
+                                    self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+                                }
                                 self.glyph_id_table.insert(ch, glyph_id);
-                                self.glyph_data_table.insert(glyph_id, self.load_points(&mut glyph_data, &self, &font_bytes));
                             }
                         }
                     }
@@ -405,37 +418,35 @@ impl TrueTypeFont {
             }
 
             Format6 { data, .. } => {
-                let mut glyph_data = self.get_glyph(font_bytes, 0);
-                self.glyph_data_table.insert(0, self.load_points(&mut glyph_data, &self, &font_bytes));
-
                 for i in 0..data.entry_count {
                     let codepoint = data.first_code + i;
                     if let Some(ch) = char::from_u32(codepoint as u32) {
                         let glyph_id = data.glyph_id_array[i as usize] as u32;
-                        let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
-
-                        if glyph_id != 0 {
+                        
+                        if glyph_id != 0 && (glyph_id as usize) < self.glyph_data_table.len() {
+                            if self.glyph_data_table[glyph_id as usize].is_none() {
+                                let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
+                                self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+                            }
                             self.glyph_id_table.insert(ch, glyph_id);
-                            self.glyph_data_table.insert(glyph_id, self.load_points(&mut glyph_data, &self, &font_bytes));
                         }
                     }
                 }
             }
 
             Format12 { data, .. } => {
-                let mut glyph_data = self.get_glyph(font_bytes, 0);
-                self.glyph_data_table.insert(0, self.load_points(&mut glyph_data, &self, &font_bytes));
-
                 for group in &data.groups {
                     for codepoint in group.start_char_code..=group.end_char_code {
                         if let Some(ch) = char::from_u32(codepoint) {
                             let offset = (codepoint - group.start_char_code) as usize;
                             let glyph_id = group.start_glyph_id + offset as u32;
-                            let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
-
-                            if glyph_id != 0 {
+                            
+                            if glyph_id != 0 && (glyph_id as usize) < self.glyph_data_table.len() {
+                                if self.glyph_data_table[glyph_id as usize].is_none() {
+                                    let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
+                                    self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+                                }
                                 self.glyph_id_table.insert(ch, glyph_id);
-                                self.glyph_data_table.insert(glyph_id, self.load_points(&mut glyph_data, &self, &font_bytes));
                             }
                         }
                     }

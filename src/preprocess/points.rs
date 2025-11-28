@@ -38,8 +38,7 @@ impl TrueTypeFont {
             ProtoGlyph::Empty => {}
         }
 
-        let mut glyph = glyph.finalize();
-        fix_points(&mut glyph.points);
+        let glyph = glyph.finalize();
         //glyph.build_lines(self.head.units_per_em as f32, 40.0);
 
         glyph
@@ -53,6 +52,7 @@ pub(crate) fn load_from_parent(master: &mut Vec<Contour>, comps: &Vec<CompositeC
         match real_glyph {
             ProtoGlyph::Simple(g) => {
                 load_simple_glyph(g, Some(component));
+                master.extend(g.points.iter().cloned());
             }
 
             ProtoGlyph::Composite(g) => {
@@ -65,26 +65,33 @@ pub(crate) fn load_from_parent(master: &mut Vec<Contour>, comps: &Vec<CompositeC
 }
 
 pub fn load_simple_glyph(g: &mut SimpleGlyph, component: Option<&CompositeComponent>) {
-    let num_points = g.end_pts_of_contours.last().map(|&e| (e + 1) as usize).unwrap_or(0);
-    let expanded_flags = expand_flags(&g.flags, num_points);
+    if !g.points.is_empty() {
+        return;
+    }
 
-    g.points.reserve(g.end_pts_of_contours.len());
+    let end_pts = &g.end_pts_of_contours;
+    let num_points = end_pts.last().map(|&e| (e + 1) as usize).unwrap_or(0);
+    
+    // g.flags is already expanded in font.rs, so we can just use it directly.
+    // The 0x01 bit indicates if the point is on the curve.
+    if g.flags.len() < num_points {
+        // Should not happen if font.rs is correct, but safety first.
+        return;
+    }
+
+    g.points.reserve(end_pts.len());
 
     let mut contour_start = 0;
-    for i in 0..g.end_pts_of_contours.len() {
-        let contour_size = if i == 0 {
-            g.end_pts_of_contours[i] as usize + 1
-        } else {
-            (g.end_pts_of_contours[i] - g.end_pts_of_contours[i - 1]) as usize
-        };
-
+    for &end_pt in end_pts {
+        let end_pt = end_pt as usize;
+        let contour_size = end_pt - contour_start + 1;
         let mut contour = Contour::new(contour_size);
 
-        for j in contour_start..=g.end_pts_of_contours[i] as usize {
+        for j in contour_start..=end_pt {
             contour.points.push(Point {
-                x: (g.x_coordinates[j] - g.x_min) as f32,
-                y: (g.y_max - g.y_coordinates[j]) as f32,
-                on_curve: expanded_flags[j],
+                x: g.x_coordinates[j] as f32,
+                y: g.y_coordinates[j] as f32,
+                on_curve: (g.flags[j] & 0x01) != 0,
             });
         }
 
@@ -92,7 +99,7 @@ pub fn load_simple_glyph(g: &mut SimpleGlyph, component: Option<&CompositeCompon
             transform_points(&mut contour.points, component);
         }
 
-        contour_start = g.end_pts_of_contours[i] as usize + 1;
+        contour_start = end_pt + 1;
         g.points.push(contour);
     }
 }
@@ -120,72 +127,26 @@ fn transform_points(points: &mut [Point], component: &CompositeComponent) {
         let old_y = p.y;
         let nx = old_x * x_scale + old_y * scale_10;
         let ny = old_x * scale_01 + old_y * y_scale;
-        p.x = nx.round();
-        p.y = ny.round();
+        p.x = nx;
+        p.y = ny;
     }
 
-    if component.flags & ARGS_ARE_XY_VALUES != 0 {
-        let dx = component.argument1 as f32;
-        let dy = component.argument2 as f32;
-        for p in points.iter_mut() {
-            p.x = p.x + dx;
-            p.y = p.y + dy;
-        }
-    }
-}
+        if component.flags & ARGS_ARE_XY_VALUES != 0 {
 
-fn expand_flags(raw_flags: &[u8], num_points: usize) -> Vec<bool> {
-    let mut expanded = Vec::with_capacity(num_points);
-    let mut i = 0;
+            let dx = component.argument1 as f32;
 
-    while expanded.len() < num_points && i < raw_flags.len() {
-        let flag = raw_flags[i];
-        expanded.push((flag & 0x01) != 0);
-        i += 1;
+            let dy = component.argument2 as f32;
 
-        if flag & 0x08 != 0 {
-            if i >= raw_flags.len() {
-                break;
+            for p in points.iter_mut() {
+
+                p.x = p.x + dx;
+
+                p.y = p.y + dy;
+
             }
-            let repeat = raw_flags[i] as usize;
-            i += 1;
-            for _ in 0..repeat {
-                if expanded.len() >= num_points {
-                    break;
-                }
-                expanded.push((flag & 0x01) != 0);
-            }
+
         }
+
     }
 
-    expanded
-}
-
-pub fn fix_points(contours: &mut [Contour]) {
-    for contour in contours.iter_mut() {
-        let len = contour.points.len();
-        let mut previous = false;
-
-        if len < 2 { continue; }
-
-        for i in 0..len {
-            let next = contour.points[(i + 1) % len];
-            let current = &mut contour.points[i % len];
-
-            if !current.on_curve && !next.on_curve {
-                let dx = next.x - current.x;
-                let dy = next.y - current.y;
-
-                if dx.abs() <= 0.5 || dy.abs() <= 0.5 {
-                    if previous == true {
-                        current.on_curve = true;
-                    }
-                    contour.points[(i + 1) % len].on_curve = true;
-                    previous = true;
-                } else {
-                    previous = false;
-                }
-            }
-        }
-    }
-}
+    

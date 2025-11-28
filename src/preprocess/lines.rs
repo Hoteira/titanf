@@ -1,6 +1,8 @@
 use crate::tables::glyf::Glyph;
-use crate::vec;
 use crate::Vec;
+
+#[cfg(not(feature = "std"))]
+use crate::F32NoStd;
 
 #[derive(Debug, Clone)]
 pub struct Line {
@@ -69,10 +71,37 @@ pub struct GlyphLines {
     pub bounds: Bounds,
 }
 
+impl GlyphLines {
+    pub fn new() -> Self {
+        Self {
+            v_lines: Vec::new(),
+            m_lines: Vec::new(),
+            lines: Vec::new(),
+            bounds: Bounds::default(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.v_lines.clear();
+        self.m_lines.clear();
+        self.lines.clear();
+        self.bounds = Bounds::default();
+    }
+}
+
 impl Glyph {
-    pub(crate) fn build_lines<const COMPLETE: bool>(&self, _units_per_em: f32, scale: f32) -> GlyphLines {
-        let tolerance_sq = (0.5 / scale).powi(2) / 9.0;
-        let mut line_segments: Vec<(f32, f32, f32, f32)> = Vec::new();
+    pub(crate) fn build_lines<const COMPLETE: bool>(&self, units_per_em: f32, scale: f32) -> GlyphLines {
+        let mut out = GlyphLines::new();
+        let mut segments = Vec::new();
+        self.build_lines_into::<COMPLETE>(units_per_em, scale, &mut out, &mut segments);
+        out
+    }
+
+    pub(crate) fn build_lines_into<const COMPLETE: bool>(&self, _units_per_em: f32, scale: f32, out: &mut GlyphLines, line_segments: &mut Vec<(f32, f32, f32, f32)>) {
+        out.clear();
+        line_segments.clear();
+
+        let tolerance_sq = (0.1 / scale).powi(2) / 9.0;
 
         let mut x_min = f32::MAX;
         let mut x_max = f32::MIN;
@@ -85,111 +114,161 @@ impl Glyph {
                 continue;
             }
 
-            let start_x = points[0].x;
-            let start_y = points[0].y;
-            let mut prev_x = start_x;
-            let mut prev_y = start_y;
+            // Update bounds from raw points (convex hull property)
+            for p in points {
+                x_min = x_min.min(p.x);
+                x_max = x_max.max(p.x);
+                y_min = y_min.min(p.y);
+                y_max = y_max.max(p.y);
+            }
 
-            x_min = x_min.min(start_x);
-            x_max = x_max.max(start_x);
-            y_min = y_min.min(start_y);
-            y_max = y_max.max(start_y);
+            // Process contour topology
+            let mut first_on_curve: Option<(f32, f32)> = None;
+            let mut first_off_curve: Option<(f32, f32)> = None;
+            let mut last_off_curve: Option<(f32, f32)> = None;
+            let mut current_pos = (0.0, 0.0);
 
-            let mut i = 1;
+            let mut i = 0;
             while i < points.len() {
                 let curr = &points[i];
+                let x = curr.x;
+                let y = curr.y;
+                let on_curve = curr.on_curve;
 
-                x_min = x_min.min(curr.x);
-                x_max = x_max.max(curr.x);
-                y_min = y_min.min(curr.y);
-                y_max = y_max.max(curr.y);
-
-                if curr.on_curve {
-                    line_segments.push((prev_x, prev_y, curr.x, curr.y));
-                    prev_x = curr.x;
-                    prev_y = curr.y;
-                    i += 1;
-                } else {
-                    let ctrl_x = curr.x;
-                    let ctrl_y = curr.y;
-
-                    let (next_x, next_y) = if i + 1 < points.len() && points[i + 1].on_curve {
+                if first_on_curve.is_none() {
+                    if on_curve {
+                        first_on_curve = Some((x, y));
+                        current_pos = (x, y);
                         i += 1;
-                        (points[i].x, points[i].y)
                     } else {
+                        if let Some(offcurve) = first_off_curve {
+                            // Two off-curves at start -> implied on-curve midpoint
+                            let mid_x = (offcurve.0 + x) * 0.5;
+                            let mid_y = (offcurve.1 + y) * 0.5;
+                            first_on_curve = Some((mid_x, mid_y));
+                            last_off_curve = Some((x, y));
+                            current_pos = (mid_x, mid_y);
+                            i += 1;
+                        } else {
+                            first_off_curve = Some((x, y));
+                            i += 1;
+                        }
+                    }
+                } else {
+                    // We are in the middle of the contour
+                    if on_curve {
+                        if let Some(offcurve) = last_off_curve {
+                            last_off_curve = None;
+                            Self::flatten_quad(current_pos.0, current_pos.1, offcurve.0, offcurve.1, x, y, tolerance_sq, line_segments);
+                        } else {
+                            line_segments.push((current_pos.0, current_pos.1, x, y));
+                        }
+                        current_pos = (x, y);
+                        i += 1;
+                    } else {
+                        let ctrl_x = x;
+                        let ctrl_y = y;
+                        
+                        // Look ahead
                         let next_idx = (i + 1) % points.len();
-                        let next = if next_idx == 0 { &points[0] } else { &points[next_idx] };
-                        ((ctrl_x + next.x) / 2.0, (ctrl_y + next.y) / 2.0)
-                    };
+                        let next = &points[next_idx];
+                        
+                        let (next_x, next_y) = if next.on_curve {
+                            // If next is on-curve, we consume it here
+                            if i + 1 < points.len() {
+                                i += 1;
+                            }
+                            (next.x, next.y)
+                        } else {
+                            // If next is off-curve, implicit midpoint
+                            ((ctrl_x + next.x) / 2.0, (ctrl_y + next.y) / 2.0)
+                        };
 
-                    Self::flatten_quad(prev_x, prev_y, ctrl_x, ctrl_y, next_x, next_y, tolerance_sq, &mut line_segments);
-
-                    prev_x = next_x;
-                    prev_y = next_y;
-                    i += 1;
+                        Self::flatten_quad(current_pos.0, current_pos.1, ctrl_x, ctrl_y, next_x, next_y, tolerance_sq, line_segments);
+                        current_pos = (next_x, next_y);
+                        
+                        i += 1;
+                    }
                 }
             }
 
-            if prev_x != start_x || prev_y != start_y {
-                line_segments.push((prev_x, prev_y, start_x, start_y));
+            // Close the path
+            if let (Some(start), Some(off1)) = (first_on_curve, first_off_curve) {
+                Self::flatten_quad(current_pos.0, current_pos.1, off1.0, off1.1, start.0, start.1, tolerance_sq, line_segments);
+            } else if current_pos != first_on_curve.unwrap_or(current_pos) {
+                 // Simple close
+                 let start = first_on_curve.unwrap();
+                 line_segments.push((current_pos.0, current_pos.1, start.0, start.1));
             }
         }
 
-        let mut v_lines = Vec::new();
-        let mut m_lines = Vec::new();
-        let mut lines = Vec::new();
+        if x_min == f32::MAX {
+             out.clear();
+             return;
+        }
+
+        // Calculate signed area to determine orientation
+        let mut area = 0.0;
+        for (x0, y0, x1, y1) in line_segments.iter() {
+            area += (y1 - y0) * (x1 + x0);
+        }
+        let reverse = area > 0.0;
+
+        let shift_x = (x_min * scale).floor() / scale;
+        let shift_y = (y_max * scale).ceil() / scale;
+
+        let width_aligned = ((x_max * scale).ceil() - (x_min * scale).floor()) / scale;
+        let height_aligned = ((y_max * scale).ceil() - (y_min * scale).floor()) / scale;
+
+        let width_scaled = width_aligned * scale;
+        let height_scaled = height_aligned * scale;
 
         if COMPLETE {
-            v_lines.reserve(self.points.len() * 3);
-            m_lines.reserve(self.points.len() * 3);
-            lines.reserve(self.points.len() * 4);
+            out.v_lines.reserve(self.points.len() * 3);
+            out.m_lines.reserve(self.points.len() * 3);
+            out.lines.reserve(self.points.len() * 4);
 
-            for (x0, y0, x1, y1) in line_segments {
-                insert_complete_line(&mut v_lines, &mut m_lines, &mut lines, x0, y0, x1, y1, scale);
-            }
-
-            for line in v_lines.iter_mut().chain(m_lines.iter_mut()).chain(lines.iter_mut()) {
-                line.x0 -= x_min;
-                line.y0 -= y_min;
-                line.x1 -= x_min;
-                line.y1 -= y_min;
+            for (x0, y0, x1, y1) in line_segments.iter() {
+                let (px0, py0, px1, py1) = if reverse { (*x1, *y1, *x0, *y0) } else { (*x0, *y0, *x1, *y1) };
+                
+                let nx0 = px0 - shift_x;
+                let ny0 = shift_y - py0;
+                let nx1 = px1 - shift_x;
+                let ny1 = shift_y - py1;
+                insert_complete_line(&mut out.v_lines, &mut out.m_lines, &mut out.lines, nx0, ny0, nx1, ny1, scale);
             }
         } else {
-            v_lines.reserve(self.points.len() * 3);
-            m_lines.reserve(self.points.len() * 3);
+            out.v_lines.reserve(self.points.len() * 3);
+            out.m_lines.reserve(self.points.len() * 3);
 
-            for (x0, y0, x1, y1) in line_segments {
-                insert_line(&mut v_lines, &mut m_lines, x0, y0, x1, y1, scale);
-            }
+            for (x0, y0, x1, y1) in line_segments.iter() {
+                let (px0, py0, px1, py1) = if reverse { (*x1, *y1, *x0, *y0) } else { (*x0, *y0, *x1, *y1) };
 
-            for line in v_lines.iter_mut().chain(m_lines.iter_mut()) {
-                line.x0 -= x_min;
-                line.y0 -= y_min;
-                line.x1 -= x_min;
-                line.y1 -= y_min;
+                let nx0 = px0 - shift_x;
+                let ny0 = shift_y - py0;
+                let nx1 = px1 - shift_x;
+                let ny1 = shift_y - py1;
+                insert_line(&mut out.v_lines, &mut out.m_lines, nx0, ny0, nx1, ny1, scale);
             }
         }
 
-        let width = x_max - x_min;
-        let height = y_max - y_min;
-
-        for line in v_lines.iter_mut().chain(m_lines.iter_mut()) {
+        for line in out.v_lines.iter_mut().chain(out.m_lines.iter_mut()).chain(out.lines.iter_mut()) {
             if line.x0 < 0.0 { line.x0 = 0.0; }
-            if line.x0 > width { line.x0 = width; }
+            if line.x0 > width_scaled { line.x0 = width_scaled; }
             if line.x1 < 0.0 { line.x1 = 0.0; }
-            if line.x1 > width { line.x1 = width; }
+            if line.x1 > width_scaled { line.x1 = width_scaled; }
             if line.y0 < 0.0 { line.y0 = 0.0; }
-            if line.y0 > height { line.y0 = height; }
+            if line.y0 > height_scaled { line.y0 = height_scaled; }
             if line.y1 < 0.0 { line.y1 = 0.0; }
-            if line.y1 > height { line.y1 = height; }
+            if line.y1 > height_scaled { line.y1 = height_scaled; }
 
             // Recompute derived fields
             line.dx = line.x1 - line.x0;
             line.dy = line.y1 - line.y0;
             line.dx_is_zero = line.dx.abs() < 1e-6;
             line.dy_is_zero = line.dy.abs() < 1e-6;
-            line.dx_sign = line.dx.signum() as i32;
-            line.dy_sign = line.dy.signum() as i32;
+            line.dx_sign = if line.dx != 0.0 { line.dx.signum() as i32 } else { 0 };
+            line.dy_sign = if line.dy != 0.0 { line.dy.signum() as i32 } else { 0 };
             line.dt_dx = if !line.dx_is_zero { 1.0 / line.dx.abs() } else { f32::MAX };
             line.dt_dy = if !line.dy_is_zero { 1.0 / line.dy.abs() } else { f32::MAX };
             line.is_degen = line.dx_is_zero && line.dy_is_zero;
@@ -197,17 +276,12 @@ impl Glyph {
             line.abs_dy = line.dy.abs();
         }
 
-        GlyphLines {
-            v_lines,
-            m_lines,
-            lines,
-            bounds: Bounds {
-                _x: 0.0,
-                _y: 0.0,
-                width,
-                height,
-            },
-        }
+        out.bounds = Bounds {
+            _x: 0.0,
+            _y: 0.0,
+            width: width_aligned,
+            height: height_aligned,
+        };
     }
 
     fn flatten_quad(
