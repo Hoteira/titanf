@@ -2,7 +2,7 @@
 use crate::F32NoStd;
 
 use crate::font::TrueTypeFont;
-use crate::preprocess::lines::Line;
+use crate::geometry::lines::Line;
 use crate::Vec;
 
 #[derive(Clone, Debug)]

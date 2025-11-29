@@ -1,5 +1,5 @@
 use crate::font::{get_i16_be, get_u16_be, TrueTypeFont};
-use crate::preprocess::points::Contour;
+use crate::geometry::points::Contour;
 use crate::tables::cmap::SupportedCmapFormats::{Format0, Format12, Format4, Format6};
 use crate::tables::glyf::ProtoGlyph::{Composite, Simple};
 use crate::tables::loca::LocaTable;

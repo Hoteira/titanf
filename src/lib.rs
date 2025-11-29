@@ -11,7 +11,7 @@
 //! ```rust
 //! use titanf::TrueTypeFont;
 //!
-//! let font_data = include_bytes!("Roboto-Medium.ttf");
+//! let font_data = include_bytes!("../Roboto-Medium.ttf");
 //! let mut font = TrueTypeFont::load_font(font_data).unwrap();
 //!
 //! let (metrics, bitmap) = font.get_char::<false>('A', 16.0);
@@ -62,7 +62,7 @@ pub mod cache;
 
 /// Font table structures (CMAP, GLYF, etc.)
 pub mod tables;
-mod preprocess;
+mod geometry;
 
 pub use crate::font::TrueTypeFont;
 

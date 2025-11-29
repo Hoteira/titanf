@@ -1,7 +1,7 @@
 #[cfg(not(feature = "std"))]
 use crate::F32NoStd;
 
-use crate::preprocess::lines::Line;
+use crate::geometry::lines::Line;
 use crate::vec;
 use crate::Vec;
 
@@ -171,32 +171,10 @@ impl Rasterizer {
     pub fn to_bitmap(&self) -> Vec<u8> {
         let len = self.width * self.height;
         let mut out = vec![0u8; len];
-        let mut acc = 0.0f32;
         
-        let buf_ptr = self.coverage_buffer.as_ptr();
-        let out_ptr = out.as_mut_ptr();
-
-        unsafe {
-            for i in 0..len {
-                let delta = *buf_ptr.add(i);
-                acc += delta;
-                
-                if delta == 0.0 {
-                    if acc <= 0.0001 { // Epsilon for float comparison stability
-                        *out_ptr.add(i) = 0;
-                        continue;
-                    } else if acc >= 0.9999 {
-                         *out_ptr.add(i) = 255;
-                         continue;
-                    }
-                }
-
-                let val = acc.abs();
-                let val = if val > 1.0 { 1.0 } else { val };
-                let pixel = (val * 255.0) as u8;
-                *out_ptr.add(i) = if pixel >= 240 { 255 } else { pixel };
-            }
-        }
+        // Use SIMD optimized accumulation and mapping
+        // coverage_buffer is larger than len, so slice it.
+        crate::rasterizer::simd::accumulate_and_map(&self.coverage_buffer[..len], &mut out);
         out
     }
 }

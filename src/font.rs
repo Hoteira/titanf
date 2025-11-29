@@ -84,7 +84,7 @@ pub struct TrueTypeFont {
     pub cache: crate::cache::Cache,
     pub dpi: f32,
     pub(crate) rasterizer: crate::rasterizer::dda::Rasterizer,
-    pub(crate) lines_scratch: crate::preprocess::lines::GlyphLines,
+    pub(crate) lines_scratch: crate::geometry::lines::GlyphLines,
     pub(crate) segments_scratch: Vec<(f32, f32, f32, f32)>,
 }
 
@@ -121,7 +121,7 @@ impl TrueTypeFont {
             cache: crate::cache::Cache::new(),
             dpi: 72.0,
             rasterizer: crate::rasterizer::dda::Rasterizer::with_capacity(0, 0),
-            lines_scratch: crate::preprocess::lines::GlyphLines::new(),
+            lines_scratch: crate::geometry::lines::GlyphLines::new(),
             segments_scratch: Vec::new(),
         }
     }
