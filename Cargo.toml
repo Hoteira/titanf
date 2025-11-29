@@ -1,7 +1,7 @@
 [package]
 name = "titanf"
 version = "2.1.0"
-authors = ["Hoteira <hoteira@proton.me"]
+authors = ["Hoteira <hoteira@proton.me>"]
 edition = "2024"
 license = "MIT"
 readme = "README.md"
