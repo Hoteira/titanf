@@ -101,7 +101,8 @@ impl Glyph {
         out.clear();
         line_segments.clear();
 
-        let tolerance_sq = (0.1 / scale).powi(2) / 9.0;
+        let temp = 0.1 / scale;
+        let tolerance_sq = temp * temp / 9.0;
 
         let mut x_min = f32::MAX;
         let mut x_max = f32::MIN;
