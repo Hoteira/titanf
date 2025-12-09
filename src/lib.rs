@@ -45,6 +45,7 @@ use alloc::vec;
 use std::vec;
 
 pub mod font;
+pub use crate::font::TrueTypeFont;
 
 /// Glyph rasterization and scanline algorithms
 pub mod rasterizer;
