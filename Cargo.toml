@@ -1,6 +1,6 @@
 [package]
 name = "titanf"
-version = "2.3.1"
+version = "2.3.2"
 authors = ["Hoteira <hoteira@proton.me>"]
 edition = "2024"
 license = "MIT"
@@ -26,7 +26,7 @@ name = "titanf"
 path = "src/lib.rs"
 
 [features]
-default = ["std"]
+default = []
 std = []
 
 [dev-dependencies]
