@@ -29,26 +29,21 @@ extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeMap as Map;
-
 #[cfg(feature = "std")]
-use std::collections::HashMap as Map;
-
+use std::collections::BTreeMap as Map;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-
 #[cfg(feature = "std")]
 use std::vec::Vec;
 
-
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use alloc::vec;
-
 #[cfg(feature = "std")]
+#[allow(unused_imports)]
 use std::vec;
 
-
-/// Font parsing and metrics structures
 pub mod font;
 
 /// Glyph rasterization and scanline algorithms
@@ -60,15 +55,12 @@ pub mod render;
 /// Caching mechanisms
 pub mod cache;
 
-/// Font table structures (CMAP, GLYF, etc.)
+/// TrueType table structures (CMAP, GLYF, etc.)
 pub mod tables;
-mod geometry;
 
-pub use crate::font::TrueTypeFont;
-
+pub(crate) mod geometry;
 
 /// A `no_std` replacement for common `f32` methods
-/// (floor, ceil, round, abs) for environments without `std`.
 pub trait F32NoStd {
     fn floor(self) -> f32;
     fn ceil(self) -> f32;
@@ -79,37 +71,55 @@ pub trait F32NoStd {
 impl F32NoStd for f32 {
     #[inline]
     fn floor(self) -> f32 {
-        let xi = self as i32;
-        if self < xi as f32 {
-            xi as f32 - 1.0
-        } else {
-            xi as f32
+        #[cfg(feature = "std")]
+        return self.floor();
+        #[cfg(not(feature = "std"))]
+        {
+            let xi = self as i32;
+            if self < xi as f32 {
+                xi as f32 - 1.0
+            } else {
+                xi as f32
+            }
         }
     }
 
     #[inline]
     fn ceil(self) -> f32 {
-        let xi = self as i32;
-        if self > xi as f32 {
-            xi as f32 + 1.0
-        } else {
-            xi as f32
+        #[cfg(feature = "std")]
+        return self.ceil();
+        #[cfg(not(feature = "std"))]
+        {
+            let xi = self as i32;
+            if self > xi as f32 {
+                xi as f32 + 1.0
+            } else {
+                xi as f32
+            }
         }
     }
 
     #[inline]
     fn round(self) -> f32 {
-        if self >= 0.0 {
-            (self + 0.5).floor()
-        } else {
-            (self - 0.5).ceil()
+        #[cfg(feature = "std")]
+        return self.round();
+        #[cfg(not(feature = "std"))]
+        {
+            if self >= 0.0 {
+                (self + 0.5).floor()
+            } else {
+                (self - 0.5).ceil()
+            }
         }
     }
 
     #[inline]
     fn abs(self) -> f32 {
-        if self < 0.0 { -self } else { self }
+        #[cfg(feature = "std")]
+        return self.abs();
+        #[cfg(not(feature = "std"))]
+        {
+            if self < 0.0 { -self } else { self }
+        }
     }
 }
-
-

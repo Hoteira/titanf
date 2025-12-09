@@ -4,6 +4,9 @@ use core::arch::x86_64::*;
 #[cfg(target_arch = "aarch64")]
 use core::arch::aarch64::*;
 
+#[cfg(not(feature = "std"))]
+use crate::F32NoStd;
+
 pub fn accumulate_and_map(input: &[f32], output: &mut [u8]) {
     assert_eq!(input.len(), output.len());
 

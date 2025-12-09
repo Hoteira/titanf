@@ -1,7 +1,3 @@
-#[cfg(feature = "std")]
-use std::mem::size_of;
-
-#[cfg(not(feature = "std"))]
 use core::mem::size_of;
 
 use crate::tables::cmap::CmapTable;
@@ -51,9 +47,8 @@ pub enum FontError {
     UnexpectedEndOfFile,
 }
 
-#[cfg(feature = "std")]
-impl std::fmt::Display for FontError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Display for FontError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             FontError::InvalidFile => write!(f, "Invalid font file"),
             FontError::TableNotFound(t) => write!(f, "Table not found: {}", t),

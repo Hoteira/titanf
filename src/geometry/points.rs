@@ -1,6 +1,3 @@
-#[cfg(not(feature = "std"))]
-use crate::F32NoStd;
-
 use crate::tables::glyf::{CompositeComponent, Glyph, ProtoGlyph, SimpleGlyph, ARGS_ARE_XY_VALUES, WE_HAVE_AN_X_AND_Y_SCALE, WE_HAVE_A_SCALE, WE_HAVE_A_TWO_BY_TWO};
 
 use crate::font::TrueTypeFont;
