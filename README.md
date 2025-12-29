@@ -11,7 +11,6 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![no_std](https://img.shields.io/badge/no__std-compatible-success.svg?style=flat-square)](https://docs.rust-embedded.org/book/)
 
-<sub>Pure Rust • SIMD Accelerated • Memory Safe • Bare-Metal Ready</sub>
 </div>
 
 <br>
@@ -83,8 +82,6 @@ Benchmarks performed on an AMD Ryzen 9 5900X rendering **1,000 characters** (Mix
 | **72px** | **51.5 ms** | 54.8 ms | 51.9 ms | 24.0 ms |
 | **120px** | **86.4 ms** | 99.5 ms | 98.0 ms | 51.2 ms |
 | **250px** | **244.0 ms** | 304.1 ms | 296.0 ms | 165.2 ms |
-
-*TiTanF scales significantly better than other pure-Rust alternatives at larger sizes due to its O(1) memory allocation strategy and SIMD optimizations.*
 
 ## License
 
