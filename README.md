@@ -16,21 +16,21 @@
 
 <br>
 
-## 📖 Overview
+## Overview
 
 **TiTanF** is a production-grade TrueType font rasterizer implemented entirely in Rust without any external dependencies (`libc`, `freetype`, etc.). It was engineered to explore high-performance vector graphics rendering techniques suitable for embedded systems and OS development.
 
 The library features a hand-written parser for the TrueType format, a robust geometry processing pipeline, and a custom anti-aliased rasterizer accelerated by SIMD instructions (SSE2 on x86_64, NEON on AArch64).
 
-## ✨ Key Features
+## Key Features
 
-- **⚡ SIMD Accelerated:** Leveraging hand-written intrinsics for `x86_64` (SSE2) and `aarch64` (NEON) to optimize the pixel coverage accumulation stage.
-- **📦 Zero Dependencies:** A strictly dependency-free library. No C bindings, no system libraries—just pure Rust.
-- **⚙️ Embedded Ready:** Fully `no_std` compatible (requires `alloc`), making it ideal for kernels, bootloaders, and embedded graphical interfaces.
-- **🛡️ Memory Safe:** Utilizes safe Rust for 99% of the codebase, with `unsafe` limited strictly to SIMD optimizations.
-- **🔧 Robust Parsing:** Zero-copy parsing of complex TrueType tables (`glyf`, `cmap` (Format 0, 4, 6, 12), `kern`, `hmtx`, etc.).
+- ** SIMD Accelerated:** Leveraging hand-written intrinsics for `x86_64` (SSE2) and `aarch64` (NEON) to optimize the pixel coverage accumulation stage.
+- ** Zero Dependencies:** A strictly dependency-free library. No C bindings, no system libraries—just pure Rust.
+- ** Embedded Ready:** Fully `no_std` compatible (requires `alloc`), making it ideal for kernels, bootloaders, and embedded graphical interfaces.
+- ** Memory Safe:** Utilizes safe Rust for 99% of the codebase, with `unsafe` limited strictly to SIMD optimizations.
+- ** Robust Parsing:** Zero-copy parsing of complex TrueType tables (`glyf`, `cmap` (Format 0, 4, 6, 12), `kern`, `hmtx`, etc.).
 
-## 🏗️ Architecture
+## Architecture
 
 The rendering pipeline is architected into three distinct stages to maximize modularity and performance:
 
@@ -43,7 +43,7 @@ The rendering pipeline is architected into three distinct stages to maximize mod
     -   **Analytic Area:** Uses an analytic coverage-based anti-aliasing algorithm (DDA) to calculate exact pixel coverage.
     -   **Accumulation:** A SIMD-optimized parallel prefix sum converts edge deltas into the final alpha map.
 
-## 🚀 Quick Start
+## Quick Start
 
 Add this to your `Cargo.toml`:
 
@@ -73,7 +73,7 @@ fn main() {
 }
 ```
 
-## 📊 Performance
+## Performance
 
 Benchmarks performed on an AMD Ryzen 9 5900X rendering **1,000 characters** (Mixed CJK & Latin).
 
@@ -86,6 +86,6 @@ Benchmarks performed on an AMD Ryzen 9 5900X rendering **1,000 characters** (Mix
 
 *TiTanF scales significantly better than other pure-Rust alternatives at larger sizes due to its O(1) memory allocation strategy and SIMD optimizations.*
 
-## 📜 License
+## License
 
 Distributed under the [MIT](LICENSE) license.
