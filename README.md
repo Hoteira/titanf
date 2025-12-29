@@ -24,11 +24,11 @@ The library features a hand-written parser for the TrueType format, a robust geo
 
 ## Key Features
 
-- ** SIMD Accelerated:** Leveraging hand-written intrinsics for `x86_64` (SSE2) and `aarch64` (NEON) to optimize the pixel coverage accumulation stage.
-- ** Zero Dependencies:** A strictly dependency-free library. No C bindings, no system libraries—just pure Rust.
-- ** Embedded Ready:** Fully `no_std` compatible (requires `alloc`), making it ideal for kernels, bootloaders, and embedded graphical interfaces.
-- ** Memory Safe:** Utilizes safe Rust for 99% of the codebase, with `unsafe` limited strictly to SIMD optimizations.
-- ** Robust Parsing:** Zero-copy parsing of complex TrueType tables (`glyf`, `cmap` (Format 0, 4, 6, 12), `kern`, `hmtx`, etc.).
+- **SIMD Accelerated:** Leveraging hand-written intrinsics for `x86_64` (SSE2) and `aarch64` (NEON) to optimize the pixel coverage accumulation stage.
+- **Zero Dependencies:** A strictly dependency-free library. No C bindings, no system libraries—just pure Rust.
+- **Embedded Ready:** Fully `no_std` compatible (requires `alloc`), making it ideal for kernels, bootloaders, and embedded graphical interfaces.
+- **Memory Safe:** Utilizes safe Rust for 99% of the codebase, with `unsafe` limited strictly to SIMD optimizations.
+- **Robust Parsing:** Zero-copy parsing of complex TrueType tables (`glyf`, `cmap` (Format 0, 4, 6, 12), `kern`, `hmtx`, etc.).
 
 ## Architecture
 
