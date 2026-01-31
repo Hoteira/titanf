@@ -30,7 +30,7 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeMap as Map;
 #[cfg(feature = "std")]
-use std::collections::BTreeMap as Map;
+use std::collections::HashMap as Map;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;

@@ -1,6 +1,3 @@
-#[cfg(not(feature = "std"))]
-use crate::F32NoStd;
-
 use crate::geometry::lines::Line;
 use crate::vec;
 use crate::Vec;
@@ -8,26 +5,47 @@ use crate::Vec;
 pub struct Rasterizer {
     width: usize,
     height: usize,
-    pub(crate) coverage_buffer: Vec<f32>,
+    pub(crate) coverage_buffer: Vec<i32>,
+    dirty_min_y: usize,
+    dirty_max_y: usize,
 }
 
 impl Rasterizer {
-    pub fn new(width: usize, height: usize) -> Self {
-        Self { width, height, coverage_buffer: vec![0.0; width * height + 1] }
+    pub fn with_capacity(width: usize, height: usize) -> Self {
+         Self {
+            width,
+            height,
+            coverage_buffer: Vec::with_capacity(width * height + 1),
+            dirty_min_y: usize::MAX,
+            dirty_max_y: 0,
+        }
     }
 
-    pub fn with_capacity(width: usize, height: usize) -> Self {
-         Self { width, height, coverage_buffer: Vec::with_capacity(width * height + 1) }
+    pub fn set_dirty_region(&mut self, min_y: f32, max_y: f32) {
+        self.dirty_min_y = (min_y as usize).saturating_sub(1);
+        self.dirty_max_y = (max_y as usize + 1).min(self.height - 1);
     }
 
     pub fn reset(&mut self, width: usize, height: usize) {
+        let old_len = self.width * self.height + 1;
         self.width = width;
         self.height = height;
         let len = width * height + 1;
+        
         if self.coverage_buffer.len() < len {
-            self.coverage_buffer.resize(len, 0.0);
+            self.coverage_buffer.resize(len, 0);
         }
-        self.coverage_buffer[..len].fill(0.0);
+
+        if old_len == len && self.dirty_min_y <= self.dirty_max_y {
+            let start = self.dirty_min_y * self.width;
+            let end = (self.dirty_max_y + 1) * self.width + 1;
+            self.coverage_buffer[start..end.min(len)].fill(0);
+        } else {
+            self.coverage_buffer[..len].fill(0);
+        }
+
+        self.dirty_min_y = usize::MAX;
+        self.dirty_max_y = 0;
     }
 
     pub fn draw(&mut self, v_lines: &[Line], m_lines: &[Line]) -> &mut Self {
@@ -44,7 +62,6 @@ impl Rasterizer {
 
     fn v_line(&mut self, line: &Line) {
         let x = line.x0 as i32;
-        // Optimization: Vertical lines have constant X. If out of bounds, skip entirely.
         if x < 0 || x >= self.width as i32 {
             return;
         }
@@ -56,12 +73,14 @@ impl Rasterizer {
         let mut y_prev = line.y0;
 
         let mid_x = (line.x0 - x as f32).clamp(0.0, 1.0);
+        let mid_x_fixed = (mid_x * 1024.0) as i32;
 
         loop {
-            // X check removed as it's checked above
             if y >= 0 && y < self.height as i32 {
                 let idx = (x + y * self.width as i32) as usize;
-                unsafe { self.add_coverage(idx, (y_prev - y_cross).clamp(-1.0, 1.0), mid_x); }
+                let height = (y_prev - y_cross).clamp(-1.0, 1.0);
+                let height_fixed = (height * 1024.0) as i32;
+                unsafe { self.add_coverage(idx, height_fixed, mid_x_fixed); }
                 y_prev = y_cross;
             }
 
@@ -75,7 +94,9 @@ impl Rasterizer {
 
         if y >= 0 && y < self.height as i32 {
             let idx = (x + y * self.width as i32) as usize;
-            unsafe { self.add_coverage(idx, (y_prev - line.y1).clamp(-1.0, 1.0), mid_x); }
+            let height = (y_prev - line.y1).clamp(-1.0, 1.0);
+            let height_fixed = (height * 1024.0) as i32;
+            unsafe { self.add_coverage(idx, height_fixed, mid_x_fixed); }
         }
     }
 
@@ -98,11 +119,10 @@ impl Rasterizer {
 
         if line.is_degen { return; }
 
-        let mut x_cross = if line.dx_sign > 0 { x + 1 } else { x };
-        let mut y_cross = if line.dy_sign > 0 { y + 1 } else { y };
+        let x_cross = if line.dx_sign > 0 { x + 1 } else { x };
 
         let mut t_max_x = if !line.dx_is_zero { (x_cross as f32 - x0) / dx } else { f32::MAX };
-        let mut t_max_y = if !line.dy_is_zero { (y_cross as f32 - y0) / dy } else { f32::MAX };
+        let mut t_max_y = if !line.dy_is_zero { (y0 as i32 as f32 + if line.dy_sign > 0 { 1.0 } else { 0.0 } - y0) / dy } else { f32::MAX };
 
         let mut x_prev = x0;
         let mut y_prev = y0;
@@ -115,7 +135,10 @@ impl Rasterizer {
 
                 if at_end {
                     let mid_x = (((x_prev + x1) * 0.5) - x as f32).clamp(0.0, 1.0);
-                    unsafe { self.add_coverage(idx, (y_prev - y1).clamp(-1.0, 1.0), mid_x); }
+                    let mid_x_fixed = (mid_x * 1024.0) as i32;
+                    let height = (y_prev - y1).clamp(-1.0, 1.0);
+                    let height_fixed = (height * 1024.0) as i32;
+                    unsafe { self.add_coverage(idx, height_fixed, mid_x_fixed); }
                     break;
                 }
 
@@ -130,7 +153,10 @@ impl Rasterizer {
                 let y_next = y0 + t * dy;
 
                 let mid_x = (((x_prev + x_next) * 0.5) - x as f32).clamp(0.0, 1.0);
-                unsafe { self.add_coverage(idx, (y_prev - y_next).clamp(-1.0, 1.0), mid_x); }
+                let mid_x_fixed = (mid_x * 1024.0) as i32;
+                let height = (y_prev - y_next).clamp(-1.0, 1.0);
+                let height_fixed = (height * 1024.0) as i32;
+                unsafe { self.add_coverage(idx, height_fixed, mid_x_fixed); }
 
                 x_prev = x_next;
                 y_prev = y_next;
@@ -144,11 +170,9 @@ impl Rasterizer {
 
             if t_max_x < t_max_y {
                 x += line.dx_sign;
-                x_cross += line.dx_sign;
                 t_max_x += dt_dx;
             } else {
                 y += line.dy_sign;
-                y_cross += line.dy_sign;
                 t_max_y += dt_dy;
             }
         }
@@ -156,9 +180,9 @@ impl Rasterizer {
 
 
     #[inline(always)]
-    unsafe fn add_coverage(&mut self, idx: usize, height: f32, mid_x: f32) {
-        let m = height * mid_x;
-        let left = height - m;
+    unsafe fn add_coverage(&mut self, idx: usize, height_fixed: i32, mid_x_fixed: i32) {
+        let m = (height_fixed * mid_x_fixed) >> 10;
+        let left = height_fixed - m;
         let right = m;
 
         unsafe {
@@ -172,8 +196,6 @@ impl Rasterizer {
         let len = self.width * self.height;
         let mut out = vec![0u8; len];
         
-        // Use SIMD optimized accumulation and mapping
-        // coverage_buffer is larger than len, so slice it.
         crate::rasterizer::simd::accumulate_and_map(&self.coverage_buffer[..len], &mut out);
         out
     }

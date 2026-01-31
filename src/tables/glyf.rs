@@ -13,14 +13,13 @@ pub(crate) const ARGS_ARE_XY_VALUES: u16 = 0x0002;
 const ARGS_ARE_WORDS: u16 = 0x0001;
 const MORE_COMPONENTS: u16 = 0x0020;
 const WE_HAVE_INSTRUCTIONS: u16 = 0x0100;
-const ROUND_XY_TO_GRID: u16 = 0x0004;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SimpleGlyph {
     pub(crate) _number_of_contours: i16,
-    pub(crate) x_min: i16,
-    pub(crate) y_min: i16,
-    pub(crate) x_max: i16,
+    pub(crate) _x_min: i16,
+    pub(crate) _y_min: i16,
+    pub(crate) _x_max: i16,
     pub(crate) y_max: i16,
     pub(crate) end_pts_of_contours: Vec<u16>,
     pub(crate) instruction_length: u16,
@@ -33,13 +32,13 @@ pub(crate) struct SimpleGlyph {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompositeGlyph {
-    pub(crate) number_of_contours: i16,
-    pub(crate) x_min: i16,
-    pub(crate) y_min: i16,
-    pub(crate) x_max: i16,
+    pub(crate) _number_of_contours: i16,
+    pub(crate) _x_min: i16,
+    pub(crate) _y_min: i16,
+    pub(crate) _x_max: i16,
     pub(crate) y_max: i16,
     pub(crate) components: Vec<CompositeComponent>,
-    pub(crate) end_pts_of_contours: Vec<u16>,
+    pub(crate) _end_pts_of_contours: Vec<u16>,
     pub(crate) instructions: Vec<u8>,
     pub(crate) points: Vec<Contour>,
 }
@@ -100,31 +99,31 @@ impl Glyph {
 }
 
 impl ProtoGlyph {
-    pub(crate) fn get_x_min(&self) -> i16 {
+    pub(crate) fn _get_x_min(&self) -> i16 {
         match self {
-            ProtoGlyph::Simple(glyph) => glyph.x_min,
-            ProtoGlyph::Composite(glyph) => glyph.x_min,
+            ProtoGlyph::Simple(glyph) => glyph._x_min,
+            ProtoGlyph::Composite(glyph) => glyph._x_min,
             ProtoGlyph::Empty => 0,
         }
     }
 
-    pub(crate) fn get_x_max(&self) -> i16 {
+    pub(crate) fn _get_x_max(&self) -> i16 {
         match self {
-            ProtoGlyph::Simple(glyph) => glyph.x_max,
-            ProtoGlyph::Composite(glyph) => glyph.x_max,
+            ProtoGlyph::Simple(glyph) => glyph._x_max,
+            ProtoGlyph::Composite(glyph) => glyph._x_max,
             ProtoGlyph::Empty => 0,
         }
     }
 
-    pub(crate) fn get_y_min(&self) -> i16 {
+    pub(crate) fn _get_y_min(&self) -> i16 {
         match self {
-            ProtoGlyph::Simple(glyph) => glyph.y_min,
-            ProtoGlyph::Composite(glyph) => glyph.y_min,
+            ProtoGlyph::Simple(glyph) => glyph._y_min,
+            ProtoGlyph::Composite(glyph) => glyph._y_min,
             ProtoGlyph::Empty => 0,
         }
     }
 
-    pub(crate) fn get_y_max(&self) -> i16 {
+    pub(crate) fn _get_y_max(&self) -> i16 {
         match self {
             ProtoGlyph::Simple(glyph) => glyph.y_max,
             ProtoGlyph::Composite(glyph) => glyph.y_max,
@@ -132,10 +131,10 @@ impl ProtoGlyph {
         }
     }
 
-    pub(crate) fn get_contour_end_points(&self) -> Vec<u16> {
+    pub(crate) fn _get_contour_end_points(&self) -> Vec<u16> {
         match self {
             ProtoGlyph::Simple(glyph) => glyph.end_pts_of_contours.clone(),
-            ProtoGlyph::Composite(glyph) => glyph.end_pts_of_contours.clone(),
+            ProtoGlyph::Composite(glyph) => glyph._end_pts_of_contours.clone(),
             ProtoGlyph::Empty => Vec::new(),
         }
     }
@@ -181,9 +180,9 @@ impl TrueTypeFont {
         if contours >= 0 {
             let mut glyph = SimpleGlyph {
                 _number_of_contours: get_i16_be(font_bytes, glyf_offset),
-                x_min: get_i16_be(font_bytes, glyf_offset + 2),
-                y_min: get_i16_be(font_bytes, glyf_offset + 4),
-                x_max: get_i16_be(font_bytes, glyf_offset + 6),
+                _x_min: get_i16_be(font_bytes, glyf_offset + 2),
+                _y_min: get_i16_be(font_bytes, glyf_offset + 4),
+                _x_max: get_i16_be(font_bytes, glyf_offset + 6),
                 y_max: get_i16_be(font_bytes, glyf_offset + 8),
                 end_pts_of_contours: Vec::new(),
                 instruction_length: 0,
@@ -282,14 +281,14 @@ impl TrueTypeFont {
             ProtoGlyph::Simple(glyph)
         } else {
             let mut glyph = CompositeGlyph {
-                number_of_contours: get_i16_be(font_bytes, glyf_offset),
-                x_min: get_i16_be(font_bytes, glyf_offset + 2),
-                y_min: get_i16_be(font_bytes, glyf_offset + 4),
-                x_max: get_i16_be(font_bytes, glyf_offset + 6),
+                _number_of_contours: get_i16_be(font_bytes, glyf_offset),
+                _x_min: get_i16_be(font_bytes, glyf_offset + 2),
+                _y_min: get_i16_be(font_bytes, glyf_offset + 4),
+                _x_max: get_i16_be(font_bytes, glyf_offset + 6),
                 y_max: get_i16_be(font_bytes, glyf_offset + 8),
                 components: Vec::new(),
                 instructions: Vec::new(),
-                end_pts_of_contours: Vec::new(),
+                _end_pts_of_contours: Vec::new(),
                 points: Vec::new(),
             };
 
@@ -452,8 +451,6 @@ impl TrueTypeFont {
                     }
                 }
             }
-
-            _ => {}
         }
     }
 }

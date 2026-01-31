@@ -115,7 +115,6 @@ impl Glyph {
                 continue;
             }
 
-            // Update bounds from raw points (convex hull property)
             for p in points {
                 x_min = x_min.min(p.x);
                 x_max = x_max.max(p.x);
@@ -123,7 +122,6 @@ impl Glyph {
                 y_max = y_max.max(p.y);
             }
 
-            // Process contour topology
             let mut first_on_curve: Option<(f32, f32)> = None;
             let mut first_off_curve: Option<(f32, f32)> = None;
             let mut last_off_curve: Option<(f32, f32)> = None;
@@ -143,7 +141,6 @@ impl Glyph {
                         i += 1;
                     } else {
                         if let Some(offcurve) = first_off_curve {
-                            // Two off-curves at start -> implied on-curve midpoint
                             let mid_x = (offcurve.0 + x) * 0.5;
                             let mid_y = (offcurve.1 + y) * 0.5;
                             first_on_curve = Some((mid_x, mid_y));
@@ -156,7 +153,6 @@ impl Glyph {
                         }
                     }
                 } else {
-                    // We are in the middle of the contour
                     if on_curve {
                         if let Some(offcurve) = last_off_curve {
                             last_off_curve = None;
@@ -169,35 +165,24 @@ impl Glyph {
                     } else {
                         let ctrl_x = x;
                         let ctrl_y = y;
-                        
-                        // Look ahead
                         let next_idx = (i + 1) % points.len();
                         let next = &points[next_idx];
-                        
                         let (next_x, next_y) = if next.on_curve {
-                            // If next is on-curve, we consume it here
-                            if i + 1 < points.len() {
-                                i += 1;
-                            }
+                            if i + 1 < points.len() { i += 1; }
                             (next.x, next.y)
                         } else {
-                            // If next is off-curve, implicit midpoint
                             ((ctrl_x + next.x) / 2.0, (ctrl_y + next.y) / 2.0)
                         };
-
                         Self::flatten_quad(current_pos.0, current_pos.1, ctrl_x, ctrl_y, next_x, next_y, tolerance_sq, line_segments);
                         current_pos = (next_x, next_y);
-                        
                         i += 1;
                     }
                 }
             }
 
-            // Close the path
             if let (Some(start), Some(off1)) = (first_on_curve, first_off_curve) {
                 Self::flatten_quad(current_pos.0, current_pos.1, off1.0, off1.1, start.0, start.1, tolerance_sq, line_segments);
             } else if current_pos != first_on_curve.unwrap_or(current_pos) {
-                 // Simple close
                  let start = first_on_curve.unwrap();
                  line_segments.push((current_pos.0, current_pos.1, start.0, start.1));
             }
@@ -208,7 +193,6 @@ impl Glyph {
              return;
         }
 
-        // Calculate signed area to determine orientation
         let mut area = 0.0;
         for (x0, y0, x1, y1) in line_segments.iter() {
             area += (y1 - y0) * (x1 + x0);
@@ -224,6 +208,9 @@ impl Glyph {
         let width_scaled = width_aligned * scale;
         let height_scaled = height_aligned * scale;
 
+        // Stem Darkening amount: roughly 1/50th of the pixel size
+        let darkening = 0.02; 
+
         if COMPLETE {
             out.v_lines.reserve(self.points.len() * 3);
             out.m_lines.reserve(self.points.len() * 3);
@@ -231,12 +218,11 @@ impl Glyph {
 
             for (x0, y0, x1, y1) in line_segments.iter() {
                 let (px0, py0, px1, py1) = if reverse { (*x1, *y1, *x0, *y0) } else { (*x0, *y0, *x1, *y1) };
-                
                 let nx0 = px0 - shift_x;
                 let ny0 = shift_y - py0;
                 let nx1 = px1 - shift_x;
                 let ny1 = shift_y - py1;
-                insert_complete_line(&mut out.v_lines, &mut out.m_lines, &mut out.lines, nx0, ny0, nx1, ny1, scale);
+                insert_complete_line(&mut out.v_lines, &mut out.m_lines, &mut out.lines, nx0, ny0, nx1, ny1, scale, darkening);
             }
         } else {
             out.v_lines.reserve(self.points.len() * 3);
@@ -244,12 +230,11 @@ impl Glyph {
 
             for (x0, y0, x1, y1) in line_segments.iter() {
                 let (px0, py0, px1, py1) = if reverse { (*x1, *y1, *x0, *y0) } else { (*x0, *y0, *x1, *y1) };
-
                 let nx0 = px0 - shift_x;
                 let ny0 = shift_y - py0;
                 let nx1 = px1 - shift_x;
                 let ny1 = shift_y - py1;
-                insert_line(&mut out.v_lines, &mut out.m_lines, nx0, ny0, nx1, ny1, scale);
+                insert_line(&mut out.v_lines, &mut out.m_lines, nx0, ny0, nx1, ny1, scale, darkening);
             }
         }
 
@@ -263,7 +248,6 @@ impl Glyph {
             if line.y1 < 0.0 { line.y1 = 0.0; }
             if line.y1 > height_scaled { line.y1 = height_scaled; }
 
-            // Recompute derived fields
             line.dx = line.x1 - line.x0;
             line.dy = line.y1 - line.y0;
             line.dx_is_zero = line.dx.abs() < 1e-6;
@@ -293,15 +277,12 @@ impl Glyph {
         output: &mut Vec<(f32, f32, f32, f32)>
     ) {
         let mut stack = [Segment::default(); 64];
-        let mut stack_count = 0;
-
+        let mut stack_count ;
         stack[0] = Segment::new(p0_x, p0_y, 0.0, p2_x, p2_y, 1.0);
         stack_count = 1;
-
         while stack_count > 0 {
             stack_count -= 1;
             let seg = stack[stack_count];
-
             let bt = (seg.at + seg.ct) * 0.5;
             let tm = 1.0 - bt;
             let a = tm * tm;
@@ -309,12 +290,10 @@ impl Glyph {
             let c = bt * bt;
             let b_x = a * p0_x + b * p1_x + c * p2_x;
             let b_y = a * p0_y + b * p1_y + c * p2_y;
-
             let area = (b_x - seg.a_x) * (seg.c_y - seg.a_y) - (seg.c_x - seg.a_x) * (b_y - seg.a_y);
             let dx = seg.c_x - seg.a_x;
             let dy = seg.c_y - seg.a_y;
             let len_sq = dx * dx + dy * dy;
-
             if area * area > tolerance_sq * len_sq {
                 if stack_count + 2 <= 64 {
                     stack[stack_count] = Segment::new(b_x, b_y, bt, seg.c_x, seg.c_y, seg.ct);
@@ -322,7 +301,6 @@ impl Glyph {
                     stack[stack_count] = Segment::new(seg.a_x, seg.a_y, seg.at, b_x, b_y, bt);
                     stack_count += 1;
                 } else {
-                    // Fallback for deep recursion (very rare): just push the line
                     output.push((seg.a_x, seg.a_y, seg.c_x, seg.c_y));
                 }
             } else {
@@ -332,13 +310,22 @@ impl Glyph {
     }
 }
 
-fn insert_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, x0: f32, y0: f32, x1: f32, y1: f32, scale: f32) {
+fn insert_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, mut x0: f32, y0: f32, mut x1: f32, y1: f32, scale: f32, darkening: f32) {
     if y0 == y1 {
         return;
     }
 
     let dx = x1 - x0;
     let dy = y1 - y0;
+
+    // Stem darkening: expand horizontal lines
+    if dx != 0.0 {
+        let sign = dx.signum();
+        x0 -= darkening * sign;
+        x1 += darkening * sign;
+    }
+
+    let dx = x1 - x0;
     let is_degen = dx == 0.0 && dy == 0.0;
 
     let line = Line {
@@ -366,9 +353,18 @@ fn insert_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, x0: f32, y0: f3
     }
 }
 
-fn insert_complete_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, lines: &mut Vec<Line>, x0: f32, y0: f32, x1: f32, y1: f32, scale: f32) {
+fn insert_complete_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, lines: &mut Vec<Line>, mut x0: f32, y0: f32, mut x1: f32, y1: f32, scale: f32, darkening: f32) {
     let dx = x1 - x0;
     let dy = y1 - y0;
+
+    // Stem darkening: expand horizontal lines
+    if dx != 0.0 {
+        let sign = dx.signum();
+        x0 -= darkening * sign;
+        x1 += darkening * sign;
+    }
+
+    let dx = x1 - x0;
     let is_degen = dx == 0.0 && dy == 0.0;
 
     let line = Line {

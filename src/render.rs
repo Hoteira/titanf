@@ -55,6 +55,7 @@ impl TrueTypeFont {
 
 
         self.rasterizer.reset(width, height);
+        self.rasterizer.set_dirty_region(0.0, height as f32); // Use calculated height for bounds
         let bitmap = self.rasterizer.draw(&self.lines_scratch.v_lines, &self.lines_scratch.m_lines).to_bitmap();
         if CACHE {
             self.cache.set(*id, size, metrics.clone(), bitmap.clone());
