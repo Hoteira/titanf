@@ -328,7 +328,7 @@ impl TrueTypeFont {
                     offset += 2;
                 } else if flags & WE_HAVE_AN_X_AND_Y_SCALE != 0 {
                     component.x_scale = Some(get_i16_be(font_bytes, offset) as f32 / 16384.0);
-                    component.y_scale = Some(get_i16_be(font_bytes, offset) as f32 / 16384.0);
+                    component.y_scale = Some(get_i16_be(font_bytes, offset + 2) as f32 / 16384.0);
                     offset += 4;
                 } else if flags & WE_HAVE_A_TWO_BY_TWO != 0 {
                     component.x_scale = Some(get_i16_be(font_bytes, offset) as f32 / 16384.0);
@@ -396,22 +396,46 @@ impl TrueTypeFont {
             }
 
             Format4 { data, .. } => {
-                for seg_idx in 0..data.seg_count_x2 / 2 {
-                    let start = data.start_count[seg_idx as usize];
-                    let end = data.end_count[seg_idx as usize];
+                let seg_count = (data.seg_count_x2 / 2) as usize;
+
+                for seg_idx in 0..seg_count {
+                    let start = data.start_count[seg_idx];
+                    let end   = data.end_count[seg_idx];
+                    if start == 0xFFFF { continue; }
 
                     for codepoint in start..=end {
-                        if let Some(ch) = char::from_u32(codepoint as u32) {
-                            let glyph_id = self.cmap.get_glyph_id(ch);
-                            
-                            if glyph_id != 0 && (glyph_id as usize) < self.glyph_data_table.len() {
-                                if self.glyph_data_table[glyph_id as usize].is_none() {
-                                    let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
-                                    self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+                        let ch = match char::from_u32(codepoint as u32) {
+                            Some(c) => c,
+                            None => continue,
+                        };
+
+                        let glyph_id: u32 = if data.id_range_offset[seg_idx] == 0 {
+                            ((codepoint as i32 + data.id_delta[seg_idx] as i32) as u32) & 0xFFFF
+                        } else {
+                            let seg_count_u16 = data.seg_count_x2 / 2;
+                            let idx = (data.id_range_offset[seg_idx] / 2
+                                + (codepoint - data.start_count[seg_idx])
+                                - (seg_count_u16 - seg_idx as u16)) as usize;
+
+                            match data.glyph_id_array.get(idx) {
+                                Some(&gid) if gid != 0 => {
+                                    ((gid as i32 + data.id_delta[seg_idx] as i32) as u32) & 0xFFFF
                                 }
-                                self.glyph_id_table.insert(ch, glyph_id);
+                                _ => 0,
                             }
+                        };
+
+                        if glyph_id == 0 || glyph_id as usize >= self.glyph_data_table.len() {
+                            continue;
                         }
+
+                        if self.glyph_data_table[glyph_id as usize].is_none() {
+                            let mut proto = self.get_glyph(font_bytes, glyph_id);
+                            self.glyph_data_table[glyph_id as usize] =
+                                Some(self.load_points(&mut proto, &self, font_bytes));
+                        }
+
+                        self.glyph_id_table.insert(ch, glyph_id);
                     }
                 }
             }

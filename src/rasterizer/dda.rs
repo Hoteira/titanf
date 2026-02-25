@@ -23,7 +23,7 @@ impl Rasterizer {
 
     pub fn set_dirty_region(&mut self, min_y: f32, max_y: f32) {
         self.dirty_min_y = (min_y as usize).saturating_sub(1);
-        self.dirty_max_y = (max_y as usize + 1).min(self.height - 1);
+        self.dirty_max_y = (max_y as usize + 1).min(self.height.saturating_sub(1));
     }
 
     pub fn reset(&mut self, width: usize, height: usize) {

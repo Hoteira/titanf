@@ -180,12 +180,24 @@ impl Glyph {
                 }
             }
 
-            if let (Some(start), Some(off1)) = (first_on_curve, first_off_curve) {
-                Self::flatten_quad(current_pos.0, current_pos.1, off1.0, off1.1, start.0, start.1, tolerance_sq, line_segments);
-            } else if current_pos != first_on_curve.unwrap_or(current_pos) {
-                 let start = first_on_curve.unwrap();
-                 line_segments.push((current_pos.0, current_pos.1, start.0, start.1));
+            if let Some(start) = first_on_curve {
+                let dx = current_pos.0 - start.0;
+                let dy = current_pos.1 - start.1;
+                let dist_sq = dx * dx + dy * dy;
+
+                if let Some(off1) = first_off_curve {
+                    Self::flatten_quad(
+                        current_pos.0, current_pos.1,
+                        off1.0, off1.1,
+                        start.0, start.1,
+                        tolerance_sq, line_segments
+                    );
+                } else if dist_sq > 0.00001 {
+                    line_segments.push((current_pos.0, current_pos.1, start.0, start.1));
+                }
             }
+
+
         }
 
         if x_min == f32::MAX {
@@ -280,7 +292,7 @@ impl Glyph {
         let mut stack_count ;
         stack[0] = Segment::new(p0_x, p0_y, 0.0, p2_x, p2_y, 1.0);
         stack_count = 1;
-        while stack_count > 0 {
+        while stack_count > 0 && stack_count < 62 {
             stack_count -= 1;
             let seg = stack[stack_count];
             let bt = (seg.at + seg.ct) * 0.5;

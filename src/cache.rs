@@ -20,7 +20,7 @@ impl Cache {
         self.0.get(&(id, size.ceil() as usize))
     }
 
-    pub fn set(&mut self, size: u32, scale: f32, metrics: Metrics, data: Vec<u8>) {
-        self.0.insert((size, scale.ceil() as usize), (metrics, data));
+    pub fn set(&mut self, id: u32, scale: f32, metrics: Metrics, data: Vec<u8>) {
+        self.0.insert((id, scale.ceil() as usize), (metrics, data));
     }
 }

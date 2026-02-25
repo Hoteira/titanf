@@ -6,7 +6,7 @@
 //! - 📦 Zero dependencies
 //! - ⚙️ `no_std` compatible (requires `alloc`)
 //! - 🎨 Subpixel anti-aliasing
-//! - 🦀 Safe, stable Rust (no unsafe)
+//! - 🦀 Safe, stable Rust
 //!
 //! ```rust
 //! use titanf::TrueTypeFont;
