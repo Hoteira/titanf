@@ -32,6 +32,14 @@ pub fn accumulate_and_map(input: &[i32], output: &mut [u8]) {
     accumulate_and_map_scalar(input, output);
 }
 
+fn accumulate_and_map_scalar(input: &[i32], output: &mut [u8]) {
+    let mut acc = 0i32;
+    for (i, val) in input.iter().enumerate() {
+        acc += val;
+        output[i] = apply_strong_core(acc);
+    }
+}
+
 #[inline(always)]
 fn apply_strong_core(val_fixed: i32) -> u8 {
     let x = val_fixed.abs() as f32 * (1.0 / 1024.0);
