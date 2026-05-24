@@ -292,7 +292,7 @@ impl Glyph {
         let mut stack_count ;
         stack[0] = Segment::new(p0_x, p0_y, 0.0, p2_x, p2_y, 1.0);
         stack_count = 1;
-        while stack_count > 0 && stack_count < 62 {
+        while stack_count > 0 {
             stack_count -= 1;
             let seg = stack[stack_count];
             let bt = (seg.at + seg.ct) * 0.5;
@@ -322,84 +322,50 @@ impl Glyph {
     }
 }
 
-fn insert_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, mut x0: f32, y0: f32, mut x1: f32, y1: f32, scale: f32, darkening: f32) {
-    if y0 == y1 {
-        return;
-    }
-
+#[inline]
+fn build_line(mut x0: f32, y0: f32, mut x1: f32, y1: f32, scale: f32, darkening: f32) -> Line {
     let dx = x1 - x0;
-    let dy = y1 - y0;
-
-    // Stem darkening: expand horizontal lines
     if dx != 0.0 {
         let sign = dx.signum();
         x0 -= darkening * sign;
         x1 += darkening * sign;
     }
-
-    let dx = x1 - x0;
-    let is_degen = dx == 0.0 && dy == 0.0;
-
-    let line = Line {
+    Line {
         x0: x0 * scale,
         y0: y0 * scale,
         x1: x1 * scale,
         y1: y1 * scale,
-        dx: dx * scale,
-        dy: dy * scale,
-        dx_sign: if dx != 0.0 { dx.signum() as i32 } else { 0 },
-        dy_sign: if dy != 0.0 { dy.signum() as i32 } else { 0 },
-        dt_dx: if dx != 0.0 { 1.0 / (dx * scale).abs() } else { f32::MAX },
-        dt_dy: if dy != 0.0 { 1.0 / (dy * scale).abs() } else { f32::MAX },
-        is_degen,
-        abs_dx: (dx * scale).abs(),
-        abs_dy: (dy * scale).abs(),
-        dx_is_zero: dx == 0.0,
-        dy_is_zero: dy == 0.0,
-    };
+        // All derived fields are recomputed after bounding-box clipping in build_lines_into.
+        dx: 0.0,
+        dy: 0.0,
+        dx_sign: 0,
+        dy_sign: 0,
+        dt_dx: f32::MAX,
+        dt_dy: f32::MAX,
+        is_degen: false,
+        abs_dx: 0.0,
+        abs_dy: 0.0,
+        dx_is_zero: true,
+        dy_is_zero: true,
+    }
+}
 
-    if x0 == x1 {
+fn insert_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, x0: f32, y0: f32, x1: f32, y1: f32, scale: f32, darkening: f32) {
+    if y0 == y1 {
+        return;
+    }
+    let line = build_line(x0, y0, x1, y1, scale, darkening);
+    if line.x0 == line.x1 {
         v_lines.push(line);
     } else {
         m_lines.push(line);
     }
 }
 
-fn insert_complete_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, lines: &mut Vec<Line>, mut x0: f32, y0: f32, mut x1: f32, y1: f32, scale: f32, darkening: f32) {
-    let dx = x1 - x0;
-    let dy = y1 - y0;
-
-    // Stem darkening: expand horizontal lines
-    if dx != 0.0 {
-        let sign = dx.signum();
-        x0 -= darkening * sign;
-        x1 += darkening * sign;
-    }
-
-    let dx = x1 - x0;
-    let is_degen = dx == 0.0 && dy == 0.0;
-
-    let line = Line {
-        x0: x0 * scale,
-        y0: y0 * scale,
-        x1: x1 * scale,
-        y1: y1 * scale,
-        dx: dx * scale,
-        dy: dy * scale,
-        dx_sign: if dx != 0.0 { dx.signum() as i32 } else { 0 },
-        dy_sign: if dy != 0.0 { dy.signum() as i32 } else { 0 },
-        dt_dx: if dx != 0.0 { 1.0 / (dx * scale).abs() } else { f32::MAX },
-        dt_dy: if dy != 0.0 { 1.0 / (dy * scale).abs() } else { f32::MAX },
-        is_degen,
-        abs_dx: (dx * scale).abs(),
-        abs_dy: (dy * scale).abs(),
-        dx_is_zero: dx == 0.0,
-        dy_is_zero: dy == 0.0,
-    };
-
+fn insert_complete_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, lines: &mut Vec<Line>, x0: f32, y0: f32, x1: f32, y1: f32, scale: f32, darkening: f32) {
+    let line = build_line(x0, y0, x1, y1, scale, darkening);
     lines.push(line.clone());
-
-    if x0 == x1 {
+    if line.x0 == line.x1 {
         v_lines.push(line);
     } else {
         m_lines.push(line);

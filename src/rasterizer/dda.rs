@@ -1,6 +1,6 @@
+use crate::Vec;
 use crate::geometry::lines::Line;
 use crate::vec;
-use crate::Vec;
 
 pub struct Rasterizer {
     width: usize,
@@ -12,7 +12,7 @@ pub struct Rasterizer {
 
 impl Rasterizer {
     pub fn with_capacity(width: usize, height: usize) -> Self {
-         Self {
+        Self {
             width,
             height,
             coverage_buffer: Vec::with_capacity(width * height + 1),
@@ -31,7 +31,7 @@ impl Rasterizer {
         self.width = width;
         self.height = height;
         let len = width * height + 1;
-        
+
         if self.coverage_buffer.len() < len {
             self.coverage_buffer.resize(len, 0);
         }
@@ -69,7 +69,11 @@ impl Rasterizer {
         let mut y = line.y0 as i32;
         let y_end = line.y1 as i32;
 
-        let mut y_cross = if line.dy_sign > 0 { y as f32 + 1.0 } else { y as f32 };
+        let mut y_cross = if line.dy_sign > 0 {
+            y as f32 + 1.0
+        } else {
+            y as f32
+        };
         let mut y_prev = line.y0;
 
         let mid_x = (line.x0 - x as f32).clamp(0.0, 1.0);
@@ -80,7 +84,9 @@ impl Rasterizer {
                 let idx = (x + y * self.width as i32) as usize;
                 let height = (y_prev - y_cross).clamp(-1.0, 1.0);
                 let height_fixed = (height * 1024.0) as i32;
-                unsafe { self.add_coverage(idx, height_fixed, mid_x_fixed); }
+                unsafe {
+                    self.add_coverage(idx, height_fixed, mid_x_fixed);
+                }
                 y_prev = y_cross;
             }
 
@@ -96,7 +102,9 @@ impl Rasterizer {
             let idx = (x + y * self.width as i32) as usize;
             let height = (y_prev - line.y1).clamp(-1.0, 1.0);
             let height_fixed = (height * 1024.0) as i32;
-            unsafe { self.add_coverage(idx, height_fixed, mid_x_fixed); }
+            unsafe {
+                self.add_coverage(idx, height_fixed, mid_x_fixed);
+            }
         }
     }
 
@@ -117,12 +125,22 @@ impl Rasterizer {
         let x_end = x1 as i32;
         let y_end = y1 as i32;
 
-        if line.is_degen { return; }
+        if line.is_degen {
+            return;
+        }
 
         let x_cross = if line.dx_sign > 0 { x + 1 } else { x };
 
-        let mut t_max_x = if !line.dx_is_zero { (x_cross as f32 - x0) / dx } else { f32::MAX };
-        let mut t_max_y = if !line.dy_is_zero { (y0 as i32 as f32 + if line.dy_sign > 0 { 1.0 } else { 0.0 } - y0) / dy } else { f32::MAX };
+        let mut t_max_x = if !line.dx_is_zero {
+            (x_cross as f32 - x0) / dx
+        } else {
+            f32::MAX
+        };
+        let mut t_max_y = if !line.dy_is_zero {
+            (y0 as i32 as f32 + if line.dy_sign > 0 { 1.0 } else { 0.0 } - y0) / dy
+        } else {
+            f32::MAX
+        };
 
         let mut x_prev = x0;
         let mut y_prev = y0;
@@ -138,7 +156,9 @@ impl Rasterizer {
                     let mid_x_fixed = (mid_x * 1024.0) as i32;
                     let height = (y_prev - y1).clamp(-1.0, 1.0);
                     let height_fixed = (height * 1024.0) as i32;
-                    unsafe { self.add_coverage(idx, height_fixed, mid_x_fixed); }
+                    unsafe {
+                        self.add_coverage(idx, height_fixed, mid_x_fixed);
+                    }
                     break;
                 }
 
@@ -156,7 +176,9 @@ impl Rasterizer {
                 let mid_x_fixed = (mid_x * 1024.0) as i32;
                 let height = (y_prev - y_next).clamp(-1.0, 1.0);
                 let height_fixed = (height * 1024.0) as i32;
-                unsafe { self.add_coverage(idx, height_fixed, mid_x_fixed); }
+                unsafe {
+                    self.add_coverage(idx, height_fixed, mid_x_fixed);
+                }
 
                 x_prev = x_next;
                 y_prev = y_next;
@@ -178,7 +200,6 @@ impl Rasterizer {
         }
     }
 
-
     #[inline(always)]
     unsafe fn add_coverage(&mut self, idx: usize, height_fixed: i32, mid_x_fixed: i32) {
         let m = (height_fixed * mid_x_fixed) >> 10;
@@ -191,11 +212,10 @@ impl Rasterizer {
         }
     }
 
-
     pub fn to_bitmap(&self) -> Vec<u8> {
         let len = self.width * self.height;
         let mut out = vec![0u8; len];
-        
+
         crate::rasterizer::simd::accumulate_and_map(&self.coverage_buffer[..len], &mut out);
         out
     }

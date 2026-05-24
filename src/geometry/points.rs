@@ -22,23 +22,20 @@ impl Contour {
 }
 
 impl TrueTypeFont {
-    pub(crate) fn load_points(&self, glyph: &mut ProtoGlyph, font: &TrueTypeFont, font_bytes: &[u8]) -> Glyph {
+    pub(crate) fn load_points(&self, glyph: &mut ProtoGlyph, font_bytes: &[u8]) -> Glyph {
         match glyph {
             ProtoGlyph::Simple(g) => {
                 load_simple_glyph(g, None);
             }
 
             ProtoGlyph::Composite(g) => {
-                load_from_parent(&mut g.points, &g.components, font, font_bytes);
+                load_from_parent(&mut g.points, &g.components, self, font_bytes);
             }
 
             ProtoGlyph::Empty => {}
         }
 
-        let glyph = glyph.finalize();
-        //glyph.build_lines(self.head.units_per_em as f32, 40.0);
-
-        glyph
+        glyph.finalize()
     }
 }
 
@@ -122,28 +119,18 @@ fn transform_points(points: &mut [Point], component: &CompositeComponent) {
     for p in points.iter_mut() {
         let old_x = p.x;
         let old_y = p.y;
-        let nx = old_x * x_scale + old_y * scale_10;
-        let ny = old_x * scale_01 + old_y * y_scale;
-        p.x = nx;
-        p.y = ny;
+        p.x = old_x * x_scale + old_y * scale_10;
+        p.y = old_x * scale_01 + old_y * y_scale;
     }
 
-        if component.flags & ARGS_ARE_XY_VALUES != 0 {
-
-            let dx = component.argument1 as f32;
-
-            let dy = component.argument2 as f32;
-
-            for p in points.iter_mut() {
-
-                p.x = p.x + dx;
-
-                p.y = p.y + dy;
-
-            }
-
+    if component.flags & ARGS_ARE_XY_VALUES != 0 {
+        let dx = component.argument1 as f32;
+        let dy = component.argument2 as f32;
+        for p in points.iter_mut() {
+            p.x += dx;
+            p.y += dy;
         }
-
     }
+}
 
     

@@ -10,13 +10,11 @@ impl TrueTypeFont {
             if table.table_tag == "kern".as_bytes() {
                 let offset = table.offset as usize;
 
-                //let version = get_u16_be(font_bytes, offset);
                 let n_tables = get_u16_be(font_bytes, offset + 2);
 
                 let mut subtable_offset = offset + 4;
 
                 for _ in 0..n_tables {
-                    //let version = get_u16_be(font_bytes, subtable_offset);
                     let length = get_u16_be(font_bytes, subtable_offset + 2);
                     let coverage = get_u16_be(font_bytes, subtable_offset + 4);
 

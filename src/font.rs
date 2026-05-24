@@ -164,26 +164,25 @@ impl TrueTypeFont {
     pub fn load_font(font_bytes: &[u8]) -> Result<Self, FontError> {
         let mut font = Self::new();
 
+        font.load_offset_table(font_bytes)?;
+        font.load_tables(font_bytes)?;
 
-        font.load_offset_table(&font_bytes)?;
-        font.load_tables(&font_bytes)?;
+        font.load_cmap(font_bytes)?;
+        font.load_cmap_encodings(font_bytes);
+        font.load_cmap_subtable_formats(font_bytes);
+        font.load_cmap_subtables(font_bytes);
+        font.load_hhea(font_bytes)?;
 
-        font.load_cmap(&font_bytes)?;
-        font.load_cmap_encodings(&font_bytes);
-        font.load_cmap_subtable_formats(&font_bytes);
-        font.load_cmap_subtables(&font_bytes);
-        font.load_hhea(&font_bytes)?;
-
-        font.load_head(&font_bytes)?;
-        font.load_maxp(&font_bytes)?;
-        font.load_loca(&font_bytes)?;
+        font.load_head(font_bytes)?;
+        font.load_maxp(font_bytes)?;
+        font.load_loca(font_bytes)?;
         font.load_glyf()?;
-        font.load_hmtx(&font_bytes)?;
+        font.load_hmtx(font_bytes)?;
 
-        font.cache_all_glyphs(&font_bytes);
-        font.load_kerning_pairs(&font_bytes);
+        font.cache_all_glyphs(font_bytes);
+        font.load_kerning_pairs(font_bytes);
 
-        //CLear tables from memory
+        // Clear tables from memory
         font.offset_table = OffsetTable::new();
         font.tables.clear();
         font.cmap = CmapTable::new();

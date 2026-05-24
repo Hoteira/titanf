@@ -126,7 +126,7 @@ unsafe fn accumulate_and_map_avx2(input: &[i32], output: &mut [u8]) {
     while i + 8 <= len {
         let delta = unsafe { _mm256_loadu_si256(input.as_ptr().add(i) as *const __m256i) };
 
-        // prefix sum dentro i due lane da 128 bit
+        // prefix sum within the two 128-bit lanes
         let s1     = _mm256_bslli_epi128(delta, 4);
         let x      = _mm256_add_epi32(delta, s1);
         let s2     = _mm256_bslli_epi128(x, 8);
@@ -198,7 +198,7 @@ unsafe fn accumulate_and_map_neon(input: &[i32], output: &mut [u8]) {
 
         let accs_f    = vcvtq_f32_s32(current_accs);
         let x         = vmulq_f32(vabsq_f32(accs_f), v_inv1024);
-        let mask_full = vcgeq_f32(x, v_half); // u32x4: 0xFFFFFFFF dove x >= 0.5
+        let mask_full = vcgeq_f32(x, v_half); // u32x4: 0xFFFFFFFF where x >= 0.5
 
         let t         = vminq_f32(vmulq_f32(x, v_2_0), v_1_0);
         let gamma     = vmulq_f32(t, vsubq_f32(v_2_0, t));

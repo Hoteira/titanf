@@ -194,6 +194,7 @@ impl TrueTypeFont {
             };
 
             let mut offset = glyf_offset + 10;
+            glyph.end_pts_of_contours.reserve(glyph._number_of_contours as usize);
             for _i in 0..glyph._number_of_contours as usize {
                 let contour = get_u16_be(font_bytes, offset);
                 glyph.end_pts_of_contours.push(contour);
@@ -203,9 +204,9 @@ impl TrueTypeFont {
             glyph.instruction_length = get_u16_be(font_bytes, offset);
             offset += 2;
 
+            glyph.instructions.reserve(glyph.instruction_length as usize);
             glyph.instructions.extend_from_slice(&font_bytes[offset..offset + glyph.instruction_length as usize]);
             offset += glyph.instruction_length as usize;
-
 
             let num_points = if glyph.end_pts_of_contours.is_empty() {
                 0
@@ -213,8 +214,6 @@ impl TrueTypeFont {
                 glyph.end_pts_of_contours.last().unwrap() + 1
             } as usize;
 
-            glyph.end_pts_of_contours.reserve(glyph._number_of_contours as usize);
-            glyph.instructions.reserve(glyph.instruction_length as usize);
             glyph.flags.reserve(num_points);
             glyph.x_coordinates.reserve(num_points);
             glyph.y_coordinates.reserve(num_points);
@@ -346,12 +345,9 @@ impl TrueTypeFont {
             }
 
             if !glyph.components.is_empty() && glyph.components.last().unwrap().flags & WE_HAVE_INSTRUCTIONS != 0 {
-                let instruction_length = get_u16_be(font_bytes, offset);
+                let instruction_length = get_u16_be(font_bytes, offset) as usize;
                 offset += 2;
-
-                for i in 0..instruction_length as usize {
-                    glyph.instructions.push(font_bytes[offset + i]);
-                }
+                glyph.instructions.extend_from_slice(&font_bytes[offset..offset + instruction_length]);
             }
 
             ProtoGlyph::Composite(glyph)
@@ -375,7 +371,7 @@ impl TrueTypeFont {
         // First, load the "missing glyph" (index 0)
         if !self.glyph_data_table.is_empty() {
              let mut glyph_data = self.get_glyph(font_bytes, 0);
-             self.glyph_data_table[0] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+             self.glyph_data_table[0] = Some(self.load_points(&mut glyph_data, font_bytes));
         }
 
         match &self.cmap.subtables[0] {
@@ -387,7 +383,7 @@ impl TrueTypeFont {
                         if glyph_id != 0 && (glyph_id as usize) < self.glyph_data_table.len() {
                             if self.glyph_data_table[glyph_id as usize].is_none() {
                                 let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
-                                self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+                                self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, font_bytes));
                             }
                             self.glyph_id_table.insert(ch, glyph_id);
                         }
@@ -432,7 +428,7 @@ impl TrueTypeFont {
                         if self.glyph_data_table[glyph_id as usize].is_none() {
                             let mut proto = self.get_glyph(font_bytes, glyph_id);
                             self.glyph_data_table[glyph_id as usize] =
-                                Some(self.load_points(&mut proto, &self, font_bytes));
+                                Some(self.load_points(&mut proto, font_bytes));
                         }
 
                         self.glyph_id_table.insert(ch, glyph_id);
@@ -449,7 +445,7 @@ impl TrueTypeFont {
                         if glyph_id != 0 && (glyph_id as usize) < self.glyph_data_table.len() {
                             if self.glyph_data_table[glyph_id as usize].is_none() {
                                 let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
-                                self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+                                self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, font_bytes));
                             }
                             self.glyph_id_table.insert(ch, glyph_id);
                         }
@@ -467,7 +463,7 @@ impl TrueTypeFont {
                             if glyph_id != 0 && (glyph_id as usize) < self.glyph_data_table.len() {
                                 if self.glyph_data_table[glyph_id as usize].is_none() {
                                     let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
-                                    self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, &self, &font_bytes));
+                                    self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, font_bytes));
                                 }
                                 self.glyph_id_table.insert(ch, glyph_id);
                             }

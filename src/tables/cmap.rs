@@ -166,8 +166,7 @@ impl TrueTypeFont {
     }
 
     pub fn load_cmap_subtables(&mut self, font_bytes: &[u8]) {
-        let mut count = 0;
-        for sf in &self.cmap.encoding_formats {
+        for (count, sf) in self.cmap.encoding_formats.clone().iter().enumerate() {
             let platform_id = self.cmap.encodings[count].platform_id;
             let encoding_id = self.cmap.encodings[count].encoding_id;
             let offset = self.cmap.offset + self.cmap.encodings[count].offset as usize;
@@ -294,7 +293,6 @@ impl TrueTypeFont {
                 }
                 _ => {}
             }
-            count += 1;
         }
 
         self.cmap.subtables.sort_by_key(|subtable| match subtable {
