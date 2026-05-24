@@ -28,7 +28,7 @@ The library features a hand-written parser for the TrueType format, a robust geo
 - ** Memory Safe:** 99% safe Rust, with `unsafe` used strictly for SIMD intrinsics.
 - ** Robust Parsing:** Zero-copy parsing of TrueType tables (`glyf`, `cmap`, `kern`, `hmtx`, etc.).
 
-## 🏗️ Architecture
+## Architecture
 
 The rendering pipeline is split into three distinct stages:
 
@@ -36,7 +36,7 @@ The rendering pipeline is split into three distinct stages:
 2.  **Geometry (`src/geometry`):** Extraction of quadratic Bezier curves and recursive flattening into monotonic line segments.
 3.  **Rasterization (`src/rasterizer`):** Analytic area coverage algorithm (DDA) followed by a SIMD parallel prefix sum accumulation.
 
-## 🚀 Quick Start
+## Quick Start
 
 Add to your `Cargo.toml`:
 
@@ -60,7 +60,7 @@ fn main() {
 }
 ```
 
-## 📊 Performance
+## Performance
 
 Benchmarks performed on an AMD Ryzen 9 5900X rendering **1,000 characters** (Mixed CJK & Latin).
 
@@ -71,6 +71,6 @@ Benchmarks performed on an AMD Ryzen 9 5900X rendering **1,000 characters** (Mix
 | **120px** | **86.4 ms** | 99.5 ms | 98.0 ms | 51.2 ms |
 | **250px** | **244.0 ms** | 304.1 ms | 296.0 ms | 165.2 ms |
 
-## 📜 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
