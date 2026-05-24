@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="img/icon.svg" alt="TiTanF Logo" width="120" height="120">
+  <img src="img/titanf_icon.svg" alt="TiTanF Logo" width="120" height="120">
 
 # TiTanF
 
