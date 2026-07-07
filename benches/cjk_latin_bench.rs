@@ -12,7 +12,7 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
     group.warm_up_time(std::time::Duration::from_secs(3));
     group.measurement_time(std::time::Duration::from_secs(3));
 
-    // Load fontss
+    // Load fonts
     let font_data = std::fs::read("NotoSansSC-Medium.ttf").expect("Failed to load font");
     let mut font_0 = TrueTypeFont::load_font(&font_data).ok().unwrap();
     let font_1 = fontdue::Font::from_bytes(&font_data as &[u8], Default::default()).unwrap();
@@ -20,25 +20,22 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
     let font_3 = ab_glyph::FontRef::try_from_slice(&font_data).unwrap();
 
     let cjk_chars = vec![
-        '你', '好', '世', '界', '人', '大', '天', '地', '中', '国',
-        '日', '本', '语', '文', '字', '学', '生', '说', '话', '书', '看', '听', '写', '读', '吃',
-        '喝', '走', '来', '去', '做',
-        'あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ',
-        'さ', 'し', 'す', 'せ', 'そ', 'た', 'ち', 'つ', 'て', 'と',
-        'ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ',
-        'サ', 'シ', 'ス', 'セ', 'ソ', 'タ', 'チ', 'ツ', 'テ', 'ト',
-        '가', '나', '다', '라', '마', '바', '사', '아', '자', '차',
-        '한', '국', '어', '학', '교', '선', '생', '님', '안', '녕',
-       
+        '你', '好', '世', '界', '人', '大', '天', '地', '中', '国', '日', '本', '语', '文', '字',
+        '学', '生', '说', '话', '书', '看', '听', '写', '读', '吃', '喝', '走', '来', '去', '做',
+        'あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ', 'さ', 'し', 'す', 'せ', 'そ',
+        'た', 'ち', 'つ', 'て', 'と', 'ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ',
+        'サ', 'シ', 'ス', 'セ', 'ソ', 'タ', 'チ', 'ツ', 'テ', 'ト', '가', '나', '다', '라', '마',
+        '바', '사', '아', '자', '차', '한', '국', '어', '학', '교', '선', '생', '님', '안', '녕',
+    ];
 
     let latin_chars = vec![
-        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-        'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e',
-        'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w',
-        'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '!', '@',
-        '#', '$', '%', '^', '&', '*', '(', ')', '[', ']', '{', '}', '|', '\\', ';', ':', '\'', '"
-       ', ',', '.', '<', '>', '/', '?', '~', '`', ' ',
-       
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+        'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+        'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1',
+        '2', '3', '4', '5', '6', '7', '8', '9', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
+        '[', ']', '{', '}', '|', '\\', ';', ':', '\'', '"', ',', '.', '<', '>', '/', '?', '~', '`',
+        ' ',
+    ];
 
     // Combine CJK and Latin
     let mut all_chars = Vec::new();
@@ -49,7 +46,7 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
     let count = 10_000;
 
     for &size in &sizes {
-        let bench_name = format!("{}pt_1000chars", size);
+        let bench_name = format!("{}pt_{}chars", size, count);
 
         // TitanF benchmark
         group.bench_with_input(
@@ -59,12 +56,13 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
                 b.iter(|| {
                     for i in 0..count {
                         let c = all_chars[i % all_chars.len()];
-                        let (metrics, bitmap) = font_0.get_char::<false>(
-                            black_box(c),
-                            font_0.get_char::<false>(black_box(c), black_box(size as f32)black_box(&bitmap);
+                        let (metrics, bitmap) =
+                            font_0.get_char::<false>(black_box(c), black_box(size as f32));
+                        black_box(&metrics);
+                        black_box(&bitmap);
                     }
-                }
-                )
+                })
+            },
         );
 
         //rusttype
@@ -75,9 +73,9 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
                 b.iter(|| {
                     for i in 0..count {
                         let c = all_chars[i % all_chars.len()];
-                        let glyph = font_2.glyph(black_box(c))
-                            .scaled(Scale:
-                            :uniform(black_box(size as f32)))
+                        let glyph = font_2
+                            .glyph(black_box(c))
+                            .scaled(Scale::uniform(black_box(size as f32)))
                             .positioned(point(0.0, 0.0));
 
                         if let Some(bb) = glyph.pixel_bounding_box() {
@@ -91,8 +89,8 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
                             black_box(&bitmap);
                         }
                     }
-                },
-                )
+                })
+            },
         );
 
         // fontdue benchmark
@@ -103,12 +101,13 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
                 b.iter(|| {
                     for i in 0..count {
                         let c = all_chars[i % all_chars.len()];
-                        let (metrics, bitmap) = font_1.rasterize(
-                            black_box(c),
-                            font_1.rasterize(black_box(c), black_box(size as f32)black_box(&bitmap);
+                        let (metrics, bitmap) =
+                            font_1.rasterize(black_box(c), black_box(size as f32));
+                        black_box(&metrics);
+                        black_box(&bitmap);
                     }
-                }
-                )
+                })
+            },
         );
 
         // ab_glyph benchmark
@@ -137,8 +136,8 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
                             black_box(&bitmap);
                         }
                     }
-                }
-                )
+                })
+            },
         );
     }
 
@@ -147,4 +146,3 @@ fn benchmark_cjk_latin(c: &mut Criterion) {
 
 criterion_group!(benches, benchmark_cjk_latin);
 criterion_main!(benches);
-
