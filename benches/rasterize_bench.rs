@@ -9,7 +9,7 @@ use criterion::{BenchmarkGroup, BenchmarkId, Criterion, measurement::WallTime};
 
 type SetupFunction = fn(&mut BenchmarkGroup<WallTime>, &str, &[u8], f32);
 
-const MESSAGE: &str = "Sphinx of black quartz, judge my vow.";
+const MESSAGE: &str = "你好世界人大天地中国日本语文字学生说话书看听写读吃喝走来去做ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:!?@#$%&*()";
 
 const FONTS: [(&str, &[u8]); 1] = [("truetype", include_bytes!("../NotoSansSC-Medium.ttf"))];
 const SIZES: [f32; 7] = [10.0, 20.0, 40.0, 80.0, 160.0, 200.0, 320.0];

@@ -63,19 +63,19 @@ fn main() {
 
 ## Performance
 
-A 1:1 port of Fontdue's own benchmark: rasterizing a 37-character pangram per iteration (NotoSansSC-Medium), criterion medians (`cargo bench` to reproduce). Fontdue is configured with its tessellation quality optimized for each size; TiTanF renders exact curves at every size.
+A benchmark rasterizing an 84-character string of mixed complex CJK and Latin characters per iteration (NotoSansSC-Medium), criterion medians (`cargo bench` to reproduce). Fontdue is configured with its tessellation quality optimized for each size; TiTanF renders exact curves at every size.
 
 | Font Size | TiTanF | Fontdue | RustType | ab_glyph |
 | :--- | :--- | :--- | :--- | :--- |
-| **10px** | 12.0 µs | **9.1 µs** | 34.3 µs | 31.5 µs |
-| **20px** | 17.5 µs | **13.9 µs** | 41.3 µs | 38.7 µs |
-| **40px** | 27.3 µs | **23.6 µs** | 64.7 µs | 62.4 µs |
-| **80px** | 56.6 µs | **50.1 µs** | 113.4 µs | 110.7 µs |
-| **160px** | 153.1 µs | **135.5 µs** | 264.9 µs | 257.1 µs |
-| **200px** | 212.3 µs | **200.6 µs** | 377.8 µs | 374.5 µs |
-| **320px** | **460.3 µs** | 504.7 µs | 824.5 µs | 844.2 µs |
+| **10px** | 71.0 µs | **54.3 µs** | 245.6 µs | 222.6 µs |
+| **20px** | 123.2 µs | **83.7 µs** | 224.2 µs | 279.4 µs |
+| **40px** | 237.3 µs | **178.2 µs** | 356.2 µs | 485.0 µs |
+| **80px** | 495.4 µs | **401.7 µs** | 966.4 µs | 821.1 µs |
+| **160px** | 1.08 ms | **1.02 ms** | 2.29 ms | 2.16 ms |
+| **200px** | **1.45 ms** | 1.60 ms | 3.21 ms | 3.07 ms |
+| **320px** | **3.13 ms** | 4.02 ms | 7.27 ms | 6.77 ms |
 
-TiTanF and Fontdue trade the lead: Fontdue is quicker at small sizes, the gap closes with size, and TiTanF wins outright at large sizes. Quality is not symmetric, though: TiTanF rasterizes quadratic curves *exactly* at every size (no flattening exists in the pipeline), while Fontdue reuses geometry tessellated for 40px — at large sizes its curve error grows to several pixels. TiTanF's other differentiators: zero dependencies, `no_std`, and panic-free parsing suitable for kernels, bootloaders and other embedded targets.
+TiTanF and Fontdue trade the lead: Fontdue is quicker at small sizes, but TiTanF's dense accumulator and curve logic scales vastly better under heavy geometric loads. TiTanF overtakes Fontdue entirely by 200px. Quality is not symmetric, though: TiTanF rasterizes quadratic curves *exactly* at every size (no flattening exists in the pipeline), while Fontdue reuses geometry tessellated for 40px — at large sizes its curve error grows to several pixels. TiTanF's other differentiators: zero dependencies, `no_std`, and panic-free parsing suitable for kernels, bootloaders and other embedded targets.
 
 ## License
 
