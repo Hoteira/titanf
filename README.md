@@ -43,7 +43,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-titanf = "2.6"
+titanf = "3.0"
 ```
 
 Basic usage:
