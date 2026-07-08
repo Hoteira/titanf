@@ -1,113 +1,130 @@
-use crate::tables::glyf::Glyph;
 use crate::Vec;
+use crate::tables::glyf::Glyph;
 
-#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use crate::F32NoStd;
-
-#[derive(Debug, Clone)]
-pub struct Line {
-    pub x0: f32,
-    pub x1: f32,
-    pub y0: f32,
-    pub y1: f32,
-
-    pub dx: f32,
-    pub dy: f32,
-
-    pub dx_sign: i32,
-    pub dy_sign: i32,
-
-    pub dt_dx: f32,
-    pub dt_dy: f32,
-
-    pub is_degen: bool,
-
-    pub abs_dx: f32,
-    pub abs_dy: f32,
-
-    pub dx_is_zero: bool,
-    pub dy_is_zero: bool,
+/// A resolved outline primitive in font units, produced once at font load.
+/// TrueType's implied on-curve points and contour start rules are already
+/// applied, so rasterization never re-walks the raw point lists.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Primitive {
+    Line {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+    },
+    Quad {
+        x0: f32,
+        y0: f32,
+        cx: f32,
+        cy: f32,
+        x1: f32,
+        y1: f32,
+    },
 }
 
-#[derive(Debug, Clone)]
-pub struct Bounds {
-    pub _x: f32,
-    pub _y: f32,
-    pub width: f32,
-    pub height: f32,
-}
+/// Per-axis traversal mode of a monotonic quad piece, packed two per byte
+/// (x in the low nibble, y in the high nibble).
+pub(crate) const QMODE_NONE: u8 = 0; // axis is constant: never crosses a boundary
+pub(crate) const QMODE_LINEAR: u8 = 1; // |a| negligible: t advances linearly
+pub(crate) const QMODE_QUAD: u8 = 2; // full quadratic root per crossing
 
-impl Default for Bounds {
-    fn default() -> Self {
-        Bounds {
-            _x: 0.0,
-            _y: 0.0,
-            width: 0.0,
-            height: 0.0,
+/// Split one winding-corrected quadratic into monotonic pieces
+/// and append them in raster-ready coefficient form.
+/// Format: endpoints (q0), coefficients (q1), and reciprocals (q2).
+fn push_monotonic_quads(
+    p0: (f32, f32),
+    p1: (f32, f32),
+    p2: (f32, f32),
+    q0v: &mut Vec<crate::geometry::simd::f32x4>,
+    q1v: &mut Vec<crate::geometry::simd::f32x4>,
+    q2v: &mut Vec<crate::geometry::simd::f32x4>,
+    qmodes: &mut Vec<u8>,
+) {
+    // Interior extrema (where the derivative changes sign) in each axis:
+    // t* = (p0 - p1) / (p0 - 2 p1 + p2).
+    let mut ts = [1.0f32; 3];
+    let mut nts = 0;
+    for (u0, u1, u2) in [(p0.0, p1.0, p2.0), (p0.1, p1.1, p2.1)] {
+        let denom = u0 - 2.0 * u1 + u2;
+        if denom != 0.0 {
+            let t = (u0 - u1) / denom;
+            if t > 1e-4 && t < 1.0 - 1e-4 {
+                ts[nts] = t;
+                nts += 1;
+            }
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Segment {
-    pub a_x: f32,
-    pub a_y: f32,
-    pub at: f32,
-    pub c_x: f32,
-    pub c_y: f32,
-    pub ct: f32,
-}
-
-impl Segment {
-    fn new(a_x: f32, a_y: f32, at: f32, c_x: f32, c_y: f32, ct: f32) -> Self {
-        Segment { a_x, a_y, at, c_x, c_y, ct }
+    if nts == 2 && ts[0] > ts[1] {
+        ts.swap(0, 1);
     }
-}
+    ts[nts] = 1.0;
 
-pub struct GlyphLines {
-    pub v_lines: Vec<Line>,
-    pub m_lines: Vec<Line>,
-    pub lines: Vec<Line>,
-    pub bounds: Bounds,
-}
-
-impl GlyphLines {
-    pub fn new() -> Self {
-        Self {
-            v_lines: Vec::new(),
-            m_lines: Vec::new(),
-            lines: Vec::new(),
-            bounds: Bounds::default(),
+    let mut push_piece = |a: (f32, f32), b: (f32, f32), c: (f32, f32)| {
+        // (a, b, c) are the piece's control points p0, p1, p2.
+        if a.1 == c.1 {
+            // Monotonic in y with equal endpoints => constant y => zero
+            // winding contribution.
+            return;
         }
-    }
+        let mut inv = [0.0f32; 2];
+        let mut mode = [QMODE_NONE; 2];
+        for (i, (u0, u1, u2)) in [(a.0, b.0, c.0), (a.1, b.1, c.1)].into_iter().enumerate() {
+            let ca = u0 - 2.0 * u1 + u2;
+            let cb = 2.0 * (u1 - u0);
+            if u0 == u2 && ca == 0.0 {
+                mode[i] = QMODE_NONE;
+            } else if ca.abs() > 1e-6 * cb.abs() && ca != 0.0 {
+                mode[i] = QMODE_QUAD;
+                inv[i] = 1.0 / (2.0 * ca);
+            } else if cb != 0.0 {
+                mode[i] = QMODE_LINEAR;
+                inv[i] = 1.0 / cb;
+            } else {
+                mode[i] = QMODE_NONE;
+            }
+        }
+        let ax = a.0 - 2.0 * b.0 + c.0;
+        let ay = a.1 - 2.0 * b.1 + c.1;
+        let bx = 2.0 * (b.0 - a.0);
+        let by = 2.0 * (b.1 - a.1);
+        q0v.push(crate::geometry::simd::f32x4::new(a.0, a.1, c.0, c.1));
+        q1v.push(crate::geometry::simd::f32x4::new(ax, ay, bx, by));
+        q2v.push(crate::geometry::simd::f32x4::new(inv[0], inv[1], 0.0, 0.0));
+        qmodes.push(mode[0] | (mode[1] << 4));
+    };
 
-    pub fn clear(&mut self) {
-        self.v_lines.clear();
-        self.m_lines.clear();
-        self.lines.clear();
-        self.bounds = Bounds::default();
+    // Subdivide sequentially at the sorted extrema (de Casteljau).
+    let mut s0 = p0;
+    let mut s1 = p1;
+    let s2 = p2;
+    let mut t_prev = 0.0f32;
+    for &t_split in &ts[..nts] {
+        // Local parameter of the global split point within the remaining
+        // curve segment.
+        let t = (t_split - t_prev) / (1.0 - t_prev);
+        let q0 = (s0.0 + (s1.0 - s0.0) * t, s0.1 + (s1.1 - s0.1) * t);
+        let q1 = (s1.0 + (s2.0 - s1.0) * t, s1.1 + (s2.1 - s1.1) * t);
+        let mid = (q0.0 + (q1.0 - q0.0) * t, q0.1 + (q1.1 - q0.1) * t);
+        push_piece(s0, q0, mid);
+        s0 = mid;
+        s1 = q1;
+        t_prev = t_split;
     }
+    push_piece(s0, s1, s2);
 }
 
 impl Glyph {
-    pub(crate) fn build_lines<const COMPLETE: bool>(&self, units_per_em: f32, scale: f32) -> GlyphLines {
-        let mut out = GlyphLines::new();
-        let mut segments = Vec::new();
-        self.build_lines_into::<COMPLETE>(units_per_em, scale, &mut out, &mut segments);
-        out
-    }
-
-    pub(crate) fn build_lines_into<const COMPLETE: bool>(&self, _units_per_em: f32, scale: f32, out: &mut GlyphLines, line_segments: &mut Vec<(f32, f32, f32, f32)>) {
-        out.clear();
-        line_segments.clear();
-
-        let temp = 0.1 / scale;
-        let tolerance_sq = temp * temp / 9.0;
-
+    /// One-time outline resolution, run at font load.
+    pub(crate) fn preprocess(&mut self, units_per_em: f32) {
         let mut x_min = f32::MAX;
         let mut x_max = f32::MIN;
         let mut y_min = f32::MAX;
         let mut y_max = f32::MIN;
+
+        let point_count: usize = self.points.iter().map(|c| c.points.len()).sum();
+        let mut prims: Vec<Primitive> = Vec::with_capacity(point_count);
 
         for contour in &self.points {
             let points = &contour.points;
@@ -156,9 +173,21 @@ impl Glyph {
                     if on_curve {
                         if let Some(offcurve) = last_off_curve {
                             last_off_curve = None;
-                            Self::flatten_quad(current_pos.0, current_pos.1, offcurve.0, offcurve.1, x, y, tolerance_sq, line_segments);
+                            prims.push(Primitive::Quad {
+                                x0: current_pos.0,
+                                y0: current_pos.1,
+                                cx: offcurve.0,
+                                cy: offcurve.1,
+                                x1: x,
+                                y1: y,
+                            });
                         } else {
-                            line_segments.push((current_pos.0, current_pos.1, x, y));
+                            prims.push(Primitive::Line {
+                                x0: current_pos.0,
+                                y0: current_pos.1,
+                                x1: x,
+                                y1: y,
+                            });
                         }
                         current_pos = (x, y);
                         i += 1;
@@ -168,12 +197,21 @@ impl Glyph {
                         let next_idx = (i + 1) % points.len();
                         let next = &points[next_idx];
                         let (next_x, next_y) = if next.on_curve {
-                            if i + 1 < points.len() { i += 1; }
+                            if i + 1 < points.len() {
+                                i += 1;
+                            }
                             (next.x, next.y)
                         } else {
                             ((ctrl_x + next.x) / 2.0, (ctrl_y + next.y) / 2.0)
                         };
-                        Self::flatten_quad(current_pos.0, current_pos.1, ctrl_x, ctrl_y, next_x, next_y, tolerance_sq, line_segments);
+                        prims.push(Primitive::Quad {
+                            x0: current_pos.0,
+                            y0: current_pos.1,
+                            cx: ctrl_x,
+                            cy: ctrl_y,
+                            x1: next_x,
+                            y1: next_y,
+                        });
                         current_pos = (next_x, next_y);
                         i += 1;
                     }
@@ -186,188 +224,121 @@ impl Glyph {
                 let dist_sq = dx * dx + dy * dy;
 
                 if let Some(off1) = first_off_curve {
-                    Self::flatten_quad(
-                        current_pos.0, current_pos.1,
-                        off1.0, off1.1,
-                        start.0, start.1,
-                        tolerance_sq, line_segments
-                    );
+                    prims.push(Primitive::Quad {
+                        x0: current_pos.0,
+                        y0: current_pos.1,
+                        cx: off1.0,
+                        cy: off1.1,
+                        x1: start.0,
+                        y1: start.1,
+                    });
                 } else if dist_sq > 0.00001 {
-                    line_segments.push((current_pos.0, current_pos.1, start.0, start.1));
+                    prims.push(Primitive::Line {
+                        x0: current_pos.0,
+                        y0: current_pos.1,
+                        x1: start.0,
+                        y1: start.1,
+                    });
                 }
             }
-
-
         }
 
         if x_min == f32::MAX {
-             out.clear();
-             return;
+            self.has_points = false;
+            return;
         }
 
+        self.has_points = true;
+        self.min_x = x_min;
+        self.max_x = x_max;
+        self.min_y = y_min;
+        self.max_y = y_max;
+
+        // Winding orientation via shoelace over primitive chords. Only the
+        // sign matters, and a global flip is invisible anyway (coverage is
+        // mapped through |acc|), so chord approximation is safe.
         let mut area = 0.0;
-        for (x0, y0, x1, y1) in line_segments.iter() {
+        for prim in &prims {
+            let (x0, y0, x1, y1) = match *prim {
+                Primitive::Line { x0, y0, x1, y1 } => (x0, y0, x1, y1),
+                Primitive::Quad { x0, y0, x1, y1, .. } => (x0, y0, x1, y1),
+            };
             area += (y1 - y0) * (x1 + x0);
         }
-        let reverse = area > 0.0;
+        self.reverse = area > 0.0;
 
-        let shift_x = (x_min * scale).floor() / scale;
-        let shift_y = (y_max * scale).ceil() / scale;
+        // Bake raster-ready geometry: straight edges as line lists, curves
+        // as monotonic quadratic pieces walked directly by the rasterizer.
+        // No flattening happens anywhere - curves are exact at every size.
+        let _ = units_per_em;
+        let reverse = self.reverse;
 
-        let width_aligned = ((x_max * scale).ceil() - (x_min * scale).floor()) / scale;
-        let height_aligned = ((y_max * scale).ceil() - (y_min * scale).floor()) / scale;
+        let mut pre_v_lines = Vec::new();
+        let mut pre_m_lines = Vec::new();
+        let mut pre_m_params = Vec::new();
+        let mut quad_q0 = Vec::new();
+        let mut quad_q1 = Vec::new();
+        let mut quad_q2 = Vec::new();
+        let mut quad_modes = Vec::new();
 
-        let width_scaled = width_aligned * scale;
-        let height_scaled = height_aligned * scale;
-
-        // Stem Darkening amount: roughly 1/50th of the pixel size
-        let darkening = 0.02; 
-
-        if COMPLETE {
-            out.v_lines.reserve(self.points.len() * 3);
-            out.m_lines.reserve(self.points.len() * 3);
-            out.lines.reserve(self.points.len() * 4);
-
-            for (x0, y0, x1, y1) in line_segments.iter() {
-                let (px0, py0, px1, py1) = if reverse { (*x1, *y1, *x0, *y0) } else { (*x0, *y0, *x1, *y1) };
-                let nx0 = px0 - shift_x;
-                let ny0 = shift_y - py0;
-                let nx1 = px1 - shift_x;
-                let ny1 = shift_y - py1;
-                insert_complete_line(&mut out.v_lines, &mut out.m_lines, &mut out.lines, nx0, ny0, nx1, ny1, scale, darkening);
-            }
-        } else {
-            out.v_lines.reserve(self.points.len() * 3);
-            out.m_lines.reserve(self.points.len() * 3);
-
-            for (x0, y0, x1, y1) in line_segments.iter() {
-                let (px0, py0, px1, py1) = if reverse { (*x1, *y1, *x0, *y0) } else { (*x0, *y0, *x1, *y1) };
-                let nx0 = px0 - shift_x;
-                let ny0 = shift_y - py0;
-                let nx1 = px1 - shift_x;
-                let ny1 = shift_y - py1;
-                insert_line(&mut out.v_lines, &mut out.m_lines, nx0, ny0, nx1, ny1, scale, darkening);
-            }
-        }
-
-        for line in out.v_lines.iter_mut().chain(out.m_lines.iter_mut()).chain(out.lines.iter_mut()) {
-            if line.x0 < 0.0 { line.x0 = 0.0; }
-            if line.x0 > width_scaled { line.x0 = width_scaled; }
-            if line.x1 < 0.0 { line.x1 = 0.0; }
-            if line.x1 > width_scaled { line.x1 = width_scaled; }
-            if line.y0 < 0.0 { line.y0 = 0.0; }
-            if line.y0 > height_scaled { line.y0 = height_scaled; }
-            if line.y1 < 0.0 { line.y1 = 0.0; }
-            if line.y1 > height_scaled { line.y1 = height_scaled; }
-
-            line.dx = line.x1 - line.x0;
-            line.dy = line.y1 - line.y0;
-            line.dx_is_zero = line.dx.abs() < 1e-6;
-            line.dy_is_zero = line.dy.abs() < 1e-6;
-            line.dx_sign = if line.dx != 0.0 { line.dx.signum() as i32 } else { 0 };
-            line.dy_sign = if line.dy != 0.0 { line.dy.signum() as i32 } else { 0 };
-            line.dt_dx = if !line.dx_is_zero { 1.0 / line.dx.abs() } else { f32::MAX };
-            line.dt_dy = if !line.dy_is_zero { 1.0 / line.dy.abs() } else { f32::MAX };
-            line.is_degen = line.dx_is_zero && line.dy_is_zero;
-            line.abs_dx = line.dx.abs();
-            line.abs_dy = line.dy.abs();
-        }
-
-        out.bounds = Bounds {
-            _x: 0.0,
-            _y: 0.0,
-            width: width_aligned,
-            height: height_aligned,
-        };
-    }
-
-    fn flatten_quad(
-        p0_x: f32, p0_y: f32,
-        p1_x: f32, p1_y: f32,
-        p2_x: f32, p2_y: f32,
-        tolerance_sq: f32,
-        output: &mut Vec<(f32, f32, f32, f32)>
-    ) {
-        let mut stack = [Segment::default(); 64];
-        let mut stack_count ;
-        stack[0] = Segment::new(p0_x, p0_y, 0.0, p2_x, p2_y, 1.0);
-        stack_count = 1;
-        while stack_count > 0 {
-            stack_count -= 1;
-            let seg = stack[stack_count];
-            let bt = (seg.at + seg.ct) * 0.5;
-            let tm = 1.0 - bt;
-            let a = tm * tm;
-            let b = 2.0 * tm * bt;
-            let c = bt * bt;
-            let b_x = a * p0_x + b * p1_x + c * p2_x;
-            let b_y = a * p0_y + b * p1_y + c * p2_y;
-            let area = (b_x - seg.a_x) * (seg.c_y - seg.a_y) - (seg.c_x - seg.a_x) * (b_y - seg.a_y);
-            let dx = seg.c_x - seg.a_x;
-            let dy = seg.c_y - seg.a_y;
-            let len_sq = dx * dx + dy * dy;
-            if area * area > tolerance_sq * len_sq {
-                if stack_count + 2 <= 64 {
-                    stack[stack_count] = Segment::new(b_x, b_y, bt, seg.c_x, seg.c_y, seg.ct);
-                    stack_count += 1;
-                    stack[stack_count] = Segment::new(seg.a_x, seg.a_y, seg.at, b_x, b_y, bt);
-                    stack_count += 1;
-                } else {
-                    output.push((seg.a_x, seg.a_y, seg.c_x, seg.c_y));
+        for prim in &prims {
+            match *prim {
+                Primitive::Line { mut x0, mut y0, mut x1, mut y1 } => {
+                    if y0 == y1 {
+                        continue;
+                    }
+                    if reverse {
+                        core::mem::swap(&mut x0, &mut x1);
+                        core::mem::swap(&mut y0, &mut y1);
+                    }
+                    if x0 == x1 {
+                        pre_v_lines.push(crate::geometry::simd::f32x4::new(x0, y0, x1, y1));
+                    } else {
+                        let dx = x1 - x0;
+                        let dy = y1 - y0;
+                        let tdx = 1.0 / dx.abs();
+                        let tdy = 1.0 / dy.abs();
+                        pre_m_lines.push(crate::geometry::simd::f32x4::new(x0, y0, x1, y1));
+                        pre_m_params.push(crate::geometry::simd::f32x4::new(tdx, tdy, dx, dy));
+                    }
                 }
-            } else {
-                output.push((seg.a_x, seg.a_y, seg.c_x, seg.c_y));
+                Primitive::Quad { x0, y0, cx, cy, x1, y1 } => {
+                    // Reversing traversal of a quad = swapping its endpoints
+                    // (t -> 1-t leaves the control point in place).
+                    let (p0, p2) = if reverse {
+                        ((x1, y1), (x0, y0))
+                    } else {
+                        ((x0, y0), (x1, y1))
+                    };
+                    push_monotonic_quads(
+                        p0,
+                        (cx, cy),
+                        p2,
+                        &mut quad_q0,
+                        &mut quad_q1,
+                        &mut quad_q2,
+                        &mut quad_modes,
+                    );
+                }
             }
         }
-    }
-}
 
-#[inline]
-fn build_line(mut x0: f32, y0: f32, mut x1: f32, y1: f32, scale: f32, darkening: f32) -> Line {
-    let dx = x1 - x0;
-    if dx != 0.0 {
-        let sign = dx.signum();
-        x0 -= darkening * sign;
-        x1 += darkening * sign;
-    }
-    Line {
-        x0: x0 * scale,
-        y0: y0 * scale,
-        x1: x1 * scale,
-        y1: y1 * scale,
-        // All derived fields are recomputed after bounding-box clipping in build_lines_into.
-        dx: 0.0,
-        dy: 0.0,
-        dx_sign: 0,
-        dy_sign: 0,
-        dt_dx: f32::MAX,
-        dt_dy: f32::MAX,
-        is_degen: false,
-        abs_dx: 0.0,
-        abs_dy: 0.0,
-        dx_is_zero: true,
-        dy_is_zero: true,
-    }
-}
+        pre_v_lines.shrink_to_fit();
+        pre_m_lines.shrink_to_fit();
+        pre_m_params.shrink_to_fit();
+        quad_q0.shrink_to_fit();
+        quad_q1.shrink_to_fit();
+        quad_q2.shrink_to_fit();
+        quad_modes.shrink_to_fit();
+        self.pre_v_lines = pre_v_lines;
+        self.pre_m_lines = pre_m_lines;
+        self.pre_m_params = pre_m_params;
+        self.quad_q0 = quad_q0;
+        self.quad_q1 = quad_q1;
+        self.quad_q2 = quad_q2;
+        self.quad_modes = quad_modes;
 
-fn insert_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, x0: f32, y0: f32, x1: f32, y1: f32, scale: f32, darkening: f32) {
-    if y0 == y1 {
-        return;
-    }
-    let line = build_line(x0, y0, x1, y1, scale, darkening);
-    if line.x0 == line.x1 {
-        v_lines.push(line);
-    } else {
-        m_lines.push(line);
-    }
-}
-
-fn insert_complete_line(v_lines: &mut Vec<Line>, m_lines: &mut Vec<Line>, lines: &mut Vec<Line>, x0: f32, y0: f32, x1: f32, y1: f32, scale: f32, darkening: f32) {
-    let line = build_line(x0, y0, x1, y1, scale, darkening);
-    lines.push(line.clone());
-    if line.x0 == line.x1 {
-        v_lines.push(line);
-    } else {
-        m_lines.push(line);
+        // Raw point lists are no longer needed; free the memory.
+        self.points = Vec::new();
     }
 }

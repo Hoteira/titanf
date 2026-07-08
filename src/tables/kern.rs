@@ -43,13 +43,26 @@ impl TrueTypeFont {
         }
     }
 
-    pub fn get_kerning_by_id(&self, left: u32, right: u32) -> Option<&i16> {
-        self.kern_table.get(&(left, right))
+    /// Kerning adjustment (font units, X advance of the left glyph).
+    /// Checks explicit pairs first (legacy `kern` and GPOS format-1),
+    /// then falls back to GPOS class matrices.
+    pub fn get_kerning_by_id(&self, left: u32, right: u32) -> Option<i16> {
+        if let Some(v) = self.kern_table.get(&(left, right)) {
+            return Some(*v);
+        }
+        for table in &self.gpos_kern {
+            if let Some(v) = table.lookup(left as u16, right as u16)
+                && v != 0 {
+                    return Some(v);
+                }
+        }
+        None
     }
 
-    pub fn get_kerning(&self, left: char, right: char) -> Option<&i16> {
-        let left = self.glyph_id_table.get(&left).unwrap_or(&0);
-        let right = self.glyph_id_table.get(&right).unwrap_or(&0);
-        self.kern_table.get(&(*left, *right))
+    /// Kerning adjustment (font units) for a character pair.
+    pub fn get_kerning(&self, left: char, right: char) -> Option<i16> {
+        let left = self.glyph_id_table.get(left as u64).copied().unwrap_or(0);
+        let right = self.glyph_id_table.get(right as u64).copied().unwrap_or(0);
+        self.get_kerning_by_id(left, right)
     }
 }

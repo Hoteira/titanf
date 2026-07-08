@@ -1,4 +1,4 @@
-use crate::font::{get_i16_be, get_u16_be, TrueTypeFont};
+use crate::font::{get_i16_be, get_u16_be, get_u32_be, TrueTypeFont};
 use crate::geometry::points::Contour;
 use crate::tables::cmap::SupportedCmapFormats::{Format0, Format12, Format4, Format6};
 use crate::tables::glyf::ProtoGlyph::{Composite, Simple};
@@ -56,11 +56,30 @@ pub(crate) struct CompositeComponent {
     pub(crate) scale_10: Option<f32>,
 }
 
+
 #[derive(Clone)]
 pub struct Glyph {
+    /// Raw contour points; drained by `preprocess()` at font load once the
+    /// resolved primitives have been built.
     pub points: Vec<Contour>,
 
     pub y_max: f32,
+
+    pub(crate) pre_v_lines: Vec<crate::geometry::simd::f32x4>,
+    pub(crate) pre_m_lines: Vec<crate::geometry::simd::f32x4>,
+    pub(crate) pre_m_params: Vec<crate::geometry::simd::f32x4>,
+    /// Monotonic quadratic pieces (font units), rasterized directly:
+    /// q0 = endpoints, q1 = polynomial coefficients, q2 = reciprocals.
+    pub(crate) quad_q0: Vec<crate::geometry::simd::f32x4>,
+    pub(crate) quad_q1: Vec<crate::geometry::simd::f32x4>,
+    pub(crate) quad_q2: Vec<crate::geometry::simd::f32x4>,
+    pub(crate) quad_modes: Vec<u8>,
+    pub(crate) reverse: bool,
+    pub(crate) has_points: bool,
+    pub(crate) min_x: f32,
+    pub(crate) max_x: f32,
+    pub(crate) min_y: f32,
+    pub(crate) max_y: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +97,7 @@ impl ProtoGlyph {
                     points: points.clone(),
 
                     y_max: *y_max as f32,
+                    ..Glyph::new()
                 }
             }
 
@@ -94,6 +114,20 @@ impl Glyph {
             points: Vec::new(),
 
             y_max: 0.0,
+
+            pre_v_lines: Vec::new(),
+            pre_m_lines: Vec::new(),
+            pre_m_params: Vec::new(),
+            quad_q0: Vec::new(),
+            quad_q1: Vec::new(),
+            quad_q2: Vec::new(),
+            quad_modes: Vec::new(),
+            reverse: false,
+            has_points: false,
+            min_x: 0.0,
+            max_x: 0.0,
+            min_y: 0.0,
+            max_y: 0.0,
         }
     }
 }
@@ -155,25 +189,47 @@ impl TrueTypeFont {
         Err(FontError::TableNotFound("glyf"))
     }
 
+    /// Malformed glyph records degrade to `ProtoGlyph::Empty` instead of
+    /// panicking, ensuring corrupt glyphs don't crash the font parser.
     pub(crate) fn get_glyph(&self, font_bytes: &[u8], glyph_id: u32) -> ProtoGlyph {
+        self.get_glyph_checked(font_bytes, glyph_id)
+            .unwrap_or(ProtoGlyph::Empty)
+    }
+
+    fn get_glyph_checked(&self, font_bytes: &[u8], glyph_id: u32) -> Option<ProtoGlyph> {
+        let idx = glyph_id as usize;
+        // Composite components carry arbitrary u16 indices; an out-of-range
+        // one would read loca entries from inside neighboring tables and
+        // parse garbage geometry. (Only valid during load, before maxp is
+        // cleared - which is the only time glyphs are parsed.)
+        if idx >= self.maxp.num_glyphs as usize {
+            return None;
+        }
         let (start_offset, end_offset) = match &self.loca {
-            LocaTable::Short(offsets, ..) => {
-                let start = offsets[glyph_id as usize] as u32 * 2;
-                let end = offsets[glyph_id as usize + 1] as u32 * 2;
+            LocaTable::Short { offset } => {
+                let start = get_u16_be(font_bytes, *offset as usize + idx * 2) as u32 * 2;
+                let end = get_u16_be(font_bytes, *offset as usize + (idx + 1) * 2) as u32 * 2;
                 (start, end)
             }
 
-            LocaTable::Long(offsets) => {
-                let start = offsets[glyph_id as usize];
-                let end = offsets[glyph_id as usize + 1];
+            LocaTable::Long { offset } => {
+                let start = get_u32_be(font_bytes, *offset as usize + idx * 4);
+                let end = get_u32_be(font_bytes, *offset as usize + (idx + 1) * 4);
                 (start, end)
             }
+            
+            LocaTable::Empty => return None,
         };
 
-        let glyf_length = end_offset as usize - start_offset as usize;
+        let glyf_length = (end_offset as usize).checked_sub(start_offset as usize)?;
+        // Keep every read inside the glyf table; corrupt loca offsets would
+        // otherwise parse "geometry" out of whatever table follows.
+        if end_offset > self.glyf.length {
+            return None;
+        }
         let glyf_offset = self.glyf.offset as usize + start_offset as usize;
 
-        if glyf_length == 0 { return ProtoGlyph::Empty; }
+        if glyf_length == 0 { return Some(ProtoGlyph::Empty); }
 
         let contours = get_i16_be(font_bytes, glyf_offset);
 
@@ -204,9 +260,10 @@ impl TrueTypeFont {
             glyph.instruction_length = get_u16_be(font_bytes, offset);
             offset += 2;
 
+            let instr_end = offset + glyph.instruction_length as usize;
             glyph.instructions.reserve(glyph.instruction_length as usize);
-            glyph.instructions.extend_from_slice(&font_bytes[offset..offset + glyph.instruction_length as usize]);
-            offset += glyph.instruction_length as usize;
+            glyph.instructions.extend_from_slice(font_bytes.get(offset..instr_end)?);
+            offset = instr_end;
 
             let num_points = if glyph.end_pts_of_contours.is_empty() {
                 0
@@ -221,13 +278,13 @@ impl TrueTypeFont {
 
             let mut flags_read = 0;
             while flags_read < num_points {
-                let flag = font_bytes[offset];
+                let flag = *font_bytes.get(offset)?;
                 glyph.flags.push(flag);
                 offset += 1;
                 flags_read += 1;
 
                 if flag & 0x08 != 0 {
-                    let repeat_count = font_bytes[offset] as usize;
+                    let repeat_count = *font_bytes.get(offset)? as usize;
                     offset += 1;
                     for _ in 0..repeat_count {
                         glyph.flags.push(flag);
@@ -240,17 +297,17 @@ impl TrueTypeFont {
             for i in 0..num_points {
                 let flag = glyph.flags[i];
                 if flag & 0x02 != 0 {
-                    let delta = font_bytes[offset] as i16;
+                    let delta = *font_bytes.get(offset)? as i16;
                     offset += 1;
                     if flag & 0x10 != 0 {
-                        x_coord += delta;
+                        x_coord = x_coord.wrapping_add(delta);
                     } else {
-                        x_coord -= delta;
+                        x_coord = x_coord.wrapping_sub(delta);
                     }
                 } else if flag & 0x10 == 0 {
                     let delta = get_i16_be(font_bytes, offset);
                     offset += 2;
-                    x_coord += delta;
+                    x_coord = x_coord.wrapping_add(delta);
                 }
 
                 glyph.x_coordinates.push(x_coord);
@@ -260,24 +317,24 @@ impl TrueTypeFont {
             for i in 0..num_points {
                 let flag = glyph.flags[i];
                 if flag & 0x04 != 0 {
-                    let delta = font_bytes[offset] as i16;
+                    let delta = *font_bytes.get(offset)? as i16;
                     offset += 1;
 
                     if flag & 0x20 != 0 {
-                        y_coord += delta;
+                        y_coord = y_coord.wrapping_add(delta);
                     } else {
-                        y_coord -= delta;
+                        y_coord = y_coord.wrapping_sub(delta);
                     }
                 } else if flag & 0x20 == 0 {
                     let delta = get_i16_be(font_bytes, offset);
                     offset += 2;
-                    y_coord += delta;
+                    y_coord = y_coord.wrapping_add(delta);
                 }
 
                 glyph.y_coordinates.push(y_coord);
             }
 
-            ProtoGlyph::Simple(glyph)
+            Some(ProtoGlyph::Simple(glyph))
         } else {
             let mut glyph = CompositeGlyph {
                 _number_of_contours: get_i16_be(font_bytes, glyf_offset),
@@ -317,8 +374,8 @@ impl TrueTypeFont {
                     component.argument2 = get_i16_be(font_bytes, offset + 2);
                     offset += 4;
                 } else {
-                    component.argument1 = font_bytes[offset] as i8 as i16;
-                    component.argument2 = font_bytes[offset + 1] as i8 as i16;
+                    component.argument1 = *font_bytes.get(offset)? as i8 as i16;
+                    component.argument2 = *font_bytes.get(offset + 1)? as i8 as i16;
                     offset += 2;
                 }
 
@@ -344,13 +401,15 @@ impl TrueTypeFont {
                 }
             }
 
-            if !glyph.components.is_empty() && glyph.components.last().unwrap().flags & WE_HAVE_INSTRUCTIONS != 0 {
+            if !glyph.components.is_empty() && glyph.components.last()?.flags & WE_HAVE_INSTRUCTIONS != 0 {
                 let instruction_length = get_u16_be(font_bytes, offset) as usize;
                 offset += 2;
-                glyph.instructions.extend_from_slice(&font_bytes[offset..offset + instruction_length]);
+                glyph
+                    .instructions
+                    .extend_from_slice(font_bytes.get(offset..offset + instruction_length)?);
             }
 
-            ProtoGlyph::Composite(glyph)
+            Some(ProtoGlyph::Composite(glyph))
         }
     }
 
@@ -360,18 +419,15 @@ impl TrueTypeFont {
             self.glyph_data_table.resize(self.maxp.num_glyphs as usize, None);
         }
 
-        if self.cmap.subtables.is_empty() {
-            return;
-        }
-
-        // Helper to load and insert a glyph if not present
-        // We can't easily use a closure due to borrowing self mutably and immutably.
-        // But we can iterate and load.
-
-        // First, load the "missing glyph" (index 0)
+        // Load the "missing glyph" (index 0) unconditionally so get_char
+        // always has a fallback, even when no usable cmap subtable exists.
         if !self.glyph_data_table.is_empty() {
              let mut glyph_data = self.get_glyph(font_bytes, 0);
              self.glyph_data_table[0] = Some(self.load_points(&mut glyph_data, font_bytes));
+        }
+
+        if self.cmap.subtables.is_empty() {
+            return;
         }
 
         match &self.cmap.subtables[0] {
@@ -385,7 +441,7 @@ impl TrueTypeFont {
                                 let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
                                 self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, font_bytes));
                             }
-                            self.glyph_id_table.insert(ch, glyph_id);
+                            self.glyph_id_table.insert(ch as u64, glyph_id);
                         }
                     }
                 }
@@ -408,12 +464,14 @@ impl TrueTypeFont {
                         let glyph_id: u32 = if data.id_range_offset[seg_idx] == 0 {
                             ((codepoint as i32 + data.id_delta[seg_idx] as i32) as u32) & 0xFFFF
                         } else {
+                            // i64 arithmetic: corrupt offsets would underflow
+                            // u16 here and panic in debug builds.
                             let seg_count_u16 = data.seg_count_x2 / 2;
-                            let idx = (data.id_range_offset[seg_idx] / 2
-                                + (codepoint - data.start_count[seg_idx])
-                                - (seg_count_u16 - seg_idx as u16)) as usize;
+                            let idx = data.id_range_offset[seg_idx] as i64 / 2
+                                + (codepoint - data.start_count[seg_idx]) as i64
+                                - (seg_count_u16 as i64 - seg_idx as i64);
 
-                            match data.glyph_id_array.get(idx) {
+                            match usize::try_from(idx).ok().and_then(|i| data.glyph_id_array.get(i)) {
                                 Some(&gid) if gid != 0 => {
                                     ((gid as i32 + data.id_delta[seg_idx] as i32) as u32) & 0xFFFF
                                 }
@@ -431,7 +489,7 @@ impl TrueTypeFont {
                                 Some(self.load_points(&mut proto, font_bytes));
                         }
 
-                        self.glyph_id_table.insert(ch, glyph_id);
+                        self.glyph_id_table.insert(ch as u64, glyph_id);
                     }
                 }
             }
@@ -447,7 +505,7 @@ impl TrueTypeFont {
                                 let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
                                 self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, font_bytes));
                             }
-                            self.glyph_id_table.insert(ch, glyph_id);
+                            self.glyph_id_table.insert(ch as u64, glyph_id);
                         }
                     }
                 }
@@ -455,6 +513,14 @@ impl TrueTypeFont {
 
             Format12 { data, .. } => {
                 for group in &data.groups {
+                    // Reject inverted or absurd ranges (beyond Unicode) from
+                    // corrupt groups; otherwise a single bad group means
+                    // billions of loop iterations.
+                    if group.start_char_code > group.end_char_code
+                        || group.end_char_code > 0x0010_FFFF
+                    {
+                        continue;
+                    }
                     for codepoint in group.start_char_code..=group.end_char_code {
                         if let Some(ch) = char::from_u32(codepoint) {
                             let offset = (codepoint - group.start_char_code) as usize;
@@ -465,7 +531,7 @@ impl TrueTypeFont {
                                     let mut glyph_data = self.get_glyph(font_bytes, glyph_id);
                                     self.glyph_data_table[glyph_id as usize] = Some(self.load_points(&mut glyph_data, font_bytes));
                                 }
-                                self.glyph_id_table.insert(ch, glyph_id);
+                                self.glyph_id_table.insert(ch as u64, glyph_id);
                             }
                         }
                     }

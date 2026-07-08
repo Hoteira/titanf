@@ -1,6 +1,6 @@
 [package]
 name = "titanf"
-version = "2.5.3"
+version = "3.0.0"
 authors = ["Hoteira <hoteira@proton.me>"]
 edition = "2024"
 license = "MIT"
@@ -17,7 +17,9 @@ exclude = [
     "benches/*",
     ".github/*",
     "target/*",
-    "*.ttf"
+    "*.ttf",
+    "fontdue/*",
+    "FONTDUE_ANALYSIS.md",
 ]
 
 
@@ -35,6 +37,7 @@ ab_glyph = "0.2.32"
 rusttype = "0.9.3"
 criterion = { version = "0.7.0", features = ["html_reports"] }
 
+
 [[bench]]
-name = "cjk_latin_bench"
+name = "rasterize_bench"
 harness = false

@@ -73,14 +73,14 @@ pub struct TrueTypeFont {
     pub(crate) hmtx: HmtxTable,
 
     pub(crate) glyph_data_table: Vec<Option<Glyph>>,
-    pub(crate) glyph_id_table: Map<char, u32>,
+    pub(crate) glyph_id_table: crate::fastmap::FastMap<u32>,
     pub kern_table: Map<(u32, u32), i16>,
+    /// GPOS class-based pair kerning (format 2), resolved at lookup time.
+    pub(crate) gpos_kern: Vec<crate::tables::gpos::ClassPairTable>,
 
     pub cache: crate::cache::Cache,
     pub dpi: f32,
     pub(crate) rasterizer: crate::rasterizer::dda::Rasterizer,
-    pub(crate) lines_scratch: crate::geometry::lines::GlyphLines,
-    pub(crate) segments_scratch: Vec<(f32, f32, f32, f32)>,
 }
 
 
@@ -103,25 +103,29 @@ impl TrueTypeFont {
             tables: Vec::new(),
             cmap: CmapTable::new(),
             head: HeadTable::new(),
-            loca: LocaTable::Short(Vec::new()),
+            loca: LocaTable::Empty,
             maxp: MaxpTable::new(),
             glyf: TableRecord::new(),
             hhea: HheaTable::new(),
             hmtx: HmtxTable::new(),
 
             glyph_data_table: Vec::new(),
-            glyph_id_table: Map::new(),
+            glyph_id_table: crate::fastmap::FastMap::new(),
             kern_table: Map::new(),
+            gpos_kern: Vec::new(),
 
             cache: crate::cache::Cache::new(),
             dpi: 72.0,
             rasterizer: crate::rasterizer::dda::Rasterizer::with_capacity(0, 0),
-            lines_scratch: crate::geometry::lines::GlyphLines::new(),
-            segments_scratch: Vec::new(),
         }
     }
 
     pub fn set_dpi(&mut self, dpi: f32) {
+        if dpi != self.dpi {
+            // Cached bitmaps were rendered at the old dpi; the cache key is
+            // (glyph, size) only, so stale entries would be served otherwise.
+            self.cache.flush();
+        }
         self.dpi = dpi;
     }
 
@@ -174,19 +178,32 @@ impl TrueTypeFont {
         font.load_hhea(font_bytes)?;
 
         font.load_head(font_bytes)?;
+        if font.head.units_per_em == 0 {
+            // Scale computations divide by units_per_em.
+            return Err(FontError::InvalidFile);
+        }
         font.load_maxp(font_bytes)?;
         font.load_loca(font_bytes)?;
         font.load_glyf()?;
         font.load_hmtx(font_bytes)?;
 
         font.cache_all_glyphs(font_bytes);
+        // Kerning: the legacy `kern` table first, then GPOS pair positioning
+        // on top (modern fonts carry kerning only in GPOS).
         font.load_kerning_pairs(font_bytes);
+        font.load_gpos_kerning(font_bytes);
+
+        // get_char falls back to the missing glyph (index 0); guarantee it
+        // exists so rendering can never hit an absent-glyph state.
+        if font.glyph_data_table.first().is_none_or(|g| g.is_none()) {
+            return Err(FontError::InvalidFile);
+        }
 
         // Clear tables from memory
         font.offset_table = OffsetTable::new();
         font.tables.clear();
         font.cmap = CmapTable::new();
-        font.loca = LocaTable::Short(Vec::new());
+        font.loca = LocaTable::Empty;
         font.maxp = MaxpTable::new();
 
         Ok(font)

@@ -100,7 +100,7 @@ pub struct CmapFormat12 {
     pub _reserved: u16,
     pub _length: u32,
     pub _language: u32,
-    pub num_groups: u32,
+    pub _num_groups: u32,
     pub groups: Vec<SequentialMapGroup>,
 }
 
@@ -171,13 +171,19 @@ impl TrueTypeFont {
             let encoding_id = self.cmap.encodings[count].encoding_id;
             let offset = self.cmap.offset + self.cmap.encodings[count].offset as usize;
 
+            // Subtables that run past the end of the file are skipped rather
+            // than parsed with garbage: a missing mapping degrades to the
+            // missing-glyph, a bad mapping renders the wrong glyph.
             match sf {
                 0 => {
+                    let Some(ids) = font_bytes.get(offset + 6..offset + 262) else {
+                        continue;
+                    };
                     let fmt = CmapFormat0 {
                         _format: get_u16_be(font_bytes, offset),
                         _length: get_u16_be(font_bytes, offset + 2),
                         _language: get_u16_be(font_bytes, offset + 4),
-                        glyph_id_array: font_bytes[offset + 6..offset + 262].try_into().unwrap(),
+                        glyph_id_array: ids.try_into().unwrap(),
                     };
 
                     self.cmap.subtables.push(SupportedCmapFormats::Format0 {
@@ -188,6 +194,14 @@ impl TrueTypeFont {
                 }
                 4 => {
                     let seg_count = get_u16_be(font_bytes, offset + 6) as usize / 2;
+
+                    // Header + four parallel seg_count arrays + reservedPad
+                    // must fit in the file.
+                    let arrays_end = offset + 14 + seg_count * 8 + 2;
+                    if arrays_end > font_bytes.len() {
+                        continue;
+                    }
+
                     let mut fmt = CmapFormat4 {
                         _format: get_u16_be(font_bytes, offset),
                         length: get_u16_be(font_bytes, offset + 2),
@@ -227,7 +241,13 @@ impl TrueTypeFont {
                         base_offset += 2;
                     }
 
-                    let glyph_id_len = (fmt.length as usize - (base_offset - offset)) / 2;
+                    // Trailing glyph id array: bounded by both the declared
+                    // subtable length and the actual end of the file.
+                    let declared = (fmt.length as usize)
+                        .saturating_sub(base_offset - offset)
+                        / 2;
+                    let available = (font_bytes.len() - base_offset) / 2;
+                    let glyph_id_len = declared.min(available);
 
                     fmt.glyph_id_array = vec![0; glyph_id_len];
                     for i in 0..glyph_id_len {
@@ -242,17 +262,22 @@ impl TrueTypeFont {
                     });
                 }
                 6 => {
+                    let entry_count = get_u16_be(font_bytes, offset + 8) as usize;
+                    if offset + 10 + entry_count * 2 > font_bytes.len() {
+                        continue;
+                    }
+
                     let mut fmt = CmapFormat6 {
                         _format: get_u16_be(font_bytes, offset),
                         _length: get_u16_be(font_bytes, offset + 2),
                         _language: get_u16_be(font_bytes, offset + 4),
                         first_code: get_u16_be(font_bytes, offset + 6),
-                        entry_count: get_u16_be(font_bytes, offset + 8),
-                        glyph_id_array: vec![0; get_u16_be(font_bytes, offset + 8) as usize],
+                        entry_count: entry_count as u16,
+                        glyph_id_array: vec![0; entry_count],
                     };
 
                     let mut base_offset = offset + 10;
-                    for i in 0..fmt.entry_count as usize {
+                    for i in 0..entry_count {
                         fmt.glyph_id_array[i] = u16::from_be_bytes([font_bytes[base_offset], font_bytes[base_offset + 1]]);
                         base_offset += 2;
                     }
@@ -264,17 +289,27 @@ impl TrueTypeFont {
                     });
                 }
                 12 => {
+                    // Cap the group count by the bytes actually present so a
+                    // corrupt header can't request a multi-gigabyte Vec.
+                    let declared_groups = get_u32_be(font_bytes, offset + 12) as usize;
+                    let base = offset + 16;
+                    let available_groups = font_bytes
+                        .len()
+                        .saturating_sub(base)
+                        / size_of::<SequentialMapGroup>();
+                    let num_groups = declared_groups.min(available_groups);
+
                     let mut fmt = CmapFormat12 {
                         _format: get_u16_be(font_bytes, offset),
                         _reserved: get_u16_be(font_bytes, offset + 2),
                         _length: get_u32_be(font_bytes, offset + 4),
                         _language: get_u32_be(font_bytes, offset + 8),
-                        num_groups: get_u32_be(font_bytes, offset + 12),
-                        groups: Vec::with_capacity(get_u32_be(font_bytes, offset + 12) as usize),
+                        _num_groups: num_groups as u32,
+                        groups: Vec::with_capacity(num_groups),
                     };
 
-                    let mut base_offset = offset + 16;
-                    for _ in 0..fmt.num_groups as usize {
+                    let mut base_offset = base;
+                    for _ in 0..num_groups {
                         let smg = SequentialMapGroup {
                             start_char_code: get_u32_be(font_bytes, base_offset),
                             end_char_code: get_u32_be(font_bytes, base_offset + 4),

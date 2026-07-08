@@ -29,17 +29,27 @@ impl TrueTypeFont {
             }
 
             ProtoGlyph::Composite(g) => {
-                load_from_parent(&mut g.points, &g.components, self, font_bytes);
+                load_from_parent(&mut g.points, &g.components, self, font_bytes, 0);
             }
 
             ProtoGlyph::Empty => {}
         }
 
-        glyph.finalize()
+        let mut out = glyph.finalize();
+        out.preprocess(self.head.units_per_em as f32);
+        out
     }
 }
 
-pub(crate) fn load_from_parent(master: &mut Vec<Contour>, comps: &Vec<CompositeComponent>, font: &TrueTypeFont, font_bytes: &[u8]) {
+/// Maximum composite nesting. A corrupt font whose components reference
+/// each other in a cycle would otherwise recurse until stack overflow.
+const MAX_COMPOSITE_DEPTH: u32 = 8;
+
+pub(crate) fn load_from_parent(master: &mut Vec<Contour>, comps: &[CompositeComponent], font: &TrueTypeFont, font_bytes: &[u8], depth: u32) {
+    if depth >= MAX_COMPOSITE_DEPTH {
+        return;
+    }
+
     for component in comps.iter() {
         let real_glyph = &mut font.get_glyph(font_bytes, component.glyph_index as u32);
 
@@ -50,7 +60,7 @@ pub(crate) fn load_from_parent(master: &mut Vec<Contour>, comps: &Vec<CompositeC
             }
 
             ProtoGlyph::Composite(g) => {
-                load_from_parent(master, &g.components, font, font_bytes);
+                load_from_parent(master, &g.components, font, font_bytes, depth + 1);
             }
 
             ProtoGlyph::Empty => {}
@@ -68,8 +78,11 @@ pub fn load_simple_glyph(g: &mut SimpleGlyph, component: Option<&CompositeCompon
     
     // g.flags is already expanded in font.rs, so we can just use it directly.
     // The 0x01 bit indicates if the point is on the curve.
-    if g.flags.len() < num_points {
-        // Should not happen if font.rs is correct, but safety first.
+    if g.flags.len() < num_points
+        || g.x_coordinates.len() < num_points
+        || g.y_coordinates.len() < num_points
+    {
+        // Should not happen if parsing succeeded, but safety first.
         return;
     }
 
@@ -78,6 +91,12 @@ pub fn load_simple_glyph(g: &mut SimpleGlyph, component: Option<&CompositeCompon
     let mut contour_start = 0;
     for &end_pt in end_pts {
         let end_pt = end_pt as usize;
+        // Contour end points must be monotonically increasing and within
+        // the parsed point arrays; a corrupt font violating either would
+        // underflow below or index out of bounds.
+        if end_pt < contour_start || end_pt >= num_points {
+            return;
+        }
         let contour_size = end_pt - contour_start + 1;
         let mut contour = Contour::new(contour_size);
 
@@ -89,7 +108,7 @@ pub fn load_simple_glyph(g: &mut SimpleGlyph, component: Option<&CompositeCompon
             });
         }
 
-        if let Some(ref component) = component {
+        if let Some(component) = component {
             transform_points(&mut contour.points, component);
         }
 

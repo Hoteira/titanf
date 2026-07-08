@@ -2,17 +2,17 @@
 //!
 //! **TitanF** is a blazingly fast, dependency-free font rasterizer written in pure Rust.
 //!
-//! - Fast
-//! - Zero dependencies
-//! - `no_std` compatible (requires `alloc`)
-//! - Subpixel anti-aliasing
-//! - Safe, stable Rust
+//! - Fast: all geometry work happens once at font load
+//! - Exact curves: quadratics are rasterized directly, never flattened
+//! - Zero dependencies, `no_std` compatible (requires `alloc`)
+//! - Kerning from both the legacy `kern` table and GPOS pair positioning
+//! - Panic-free on malformed or truncated fonts
 //!
-//! ```rust
+//! ```rust,no_run
 //! use titanf::TrueTypeFont;
 //!
-//! let font_data = include_bytes!("../Roboto-Medium.ttf");
-//! let mut font = TrueTypeFont::load_font(font_data).unwrap();
+//! let font_data = std::fs::read("Roboto-Medium.ttf").unwrap();
+//! let mut font = TrueTypeFont::load_font(&font_data).unwrap();
 //!
 //! let (metrics, bitmap) = font.get_char::<false>('A', 16.0);
 //! //                                      ^^^^^ turn caching on/off
@@ -47,6 +47,8 @@ use std::vec;
 pub mod font;
 pub use crate::font::TrueTypeFont;
 
+pub(crate) mod fastmap;
+
 /// Glyph rasterization and scanline algorithms
 pub mod rasterizer;
 
@@ -67,6 +69,7 @@ pub trait F32NoStd {
     fn ceil(self) -> f32;
     fn round(self) -> f32;
     fn abs(self) -> f32;
+    fn trunc(self) -> f32;
 }
 
 impl F32NoStd for f32 {
@@ -121,6 +124,17 @@ impl F32NoStd for f32 {
         #[cfg(not(feature = "std"))]
         {
             if self < 0.0 { -self } else { self }
+        }
+    }
+
+    #[inline]
+    fn trunc(self) -> f32 {
+        #[cfg(feature = "std")]
+        return self.trunc();
+        #[cfg(not(feature = "std"))]
+        {
+            let xi = self as i32;
+            xi as f32
         }
     }
 }

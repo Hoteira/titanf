@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="img/titanf_icon.svg" alt="TiTanF Logo" width="120" height="120">
+  <img src="img/icon.svg" alt="TiTanF Logo" width="120" height="120">
 
 # TiTanF
 
@@ -22,19 +22,20 @@ The library features a hand-written parser for the TrueType format, a robust geo
 
 ##  Key Features
 
-- **SIMD Accelerated:** Optimized pixel coverage accumulation using SSE2 (x86_64) and NEON (AArch64).
+- **SIMD Accelerated:** Optimized pixel coverage accumulation using SSE2/AVX2 (x86_64) and NEON (AArch64).
 - **Zero Dependencies:** No C bindings, no system libraries—just pure Rust.
 - **Embedded Ready:** Fully `no_std` compatible (requires `alloc`), ideal for kernels and bootloaders.
-- **Memory Safe:** 99% safe Rust, with `unsafe` used strictly for SIMD intrinsics.
-- **Robust Parsing:** Zero-copy parsing of TrueType tables (`glyf`, `cmap`, `kern`, `hmtx`, etc.).
+- **Panic-Free on Bad Input:** Malformed or truncated fonts return `Err` or degrade to blank glyphs; they never panic the library.
+- **Memory Safe:** Overwhelmingly safe Rust; `unsafe` is confined to SIMD intrinsics and a few bounds-proven hot-path writes.
+- **Robust Parsing:** Bounds-checked parsing of TrueType tables (`glyf`, `cmap`, `kern`, `hmtx`, etc.), including composite glyphs.
 
 ## Architecture
 
 The rendering pipeline is split into three distinct stages:
 
-1.  **Parsing (`src/tables`):** Raw binary data is parsed into strongly-typed structures. Complex glyph data is lazy-loaded.
-2.  **Geometry (`src/geometry`):** Extraction of quadratic Bezier curves and recursive flattening into monotonic line segments.
-3.  **Rasterization (`src/rasterizer`):** Analytic area coverage algorithm (DDA) followed by a SIMD parallel prefix sum accumulation.
+1.  **Parsing (`src/tables`):** All glyphs are parsed eagerly at `load_font` and resolved into raster-ready geometry: line lists plus monotonic quadratic pieces with precomputed coefficients, bounds and winding.
+2.  **Geometry (`src/geometry`):** Nothing happens per rasterization — scaling geometry into pixel space is one or two SIMD multiply-adds per line or curve piece. Curves are never flattened.
+3.  **Rasterization (`src/rasterizer`):** Precounted grid walks deposit exact area coverage per pixel crossing — curve crossings solve the quadratic directly (one hardware sqrt) — followed by span-limited SIMD prefix-sum accumulation that maps coverage to alpha and re-zeroes the buffer as it goes.
 
 ## Quick Start
 
@@ -42,7 +43,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-titanf = "2.1.0"
+titanf = "2.6"
 ```
 
 Basic usage:
@@ -62,14 +63,19 @@ fn main() {
 
 ## Performance
 
-Benchmarks performed on an AMD Ryzen 9 5900X rendering **1,000 characters** (Mixed CJK & Latin).
+A 1:1 port of Fontdue's own benchmark: rasterizing a 37-character pangram per iteration (NotoSansSC-Medium), criterion medians (`cargo bench` to reproduce). Fontdue is configured with its tessellation quality optimized for each size; TiTanF renders exact curves at every size.
 
-| Font Size | **TiTanF** | RustType | ab_glyph | Fontdue |
+| Font Size | TiTanF | Fontdue | RustType | ab_glyph |
 | :--- | :--- | :--- | :--- | :--- |
-| **12px** | **18.4 ms** | 18.6 ms | 16.9 ms | 4.8 ms |
-| **72px** | **51.5 ms** | 54.8 ms | 51.9 ms | 24.0 ms |
-| **120px** | **86.4 ms** | 99.5 ms | 98.0 ms | 51.2 ms |
-| **250px** | **244.0 ms** | 304.1 ms | 296.0 ms | 165.2 ms |
+| **10px** | 12.0 µs | **9.1 µs** | 34.3 µs | 31.5 µs |
+| **20px** | 17.5 µs | **13.9 µs** | 41.3 µs | 38.7 µs |
+| **40px** | 27.3 µs | **23.6 µs** | 64.7 µs | 62.4 µs |
+| **80px** | 56.6 µs | **50.1 µs** | 113.4 µs | 110.7 µs |
+| **160px** | 153.1 µs | **135.5 µs** | 264.9 µs | 257.1 µs |
+| **200px** | 212.3 µs | **200.6 µs** | 377.8 µs | 374.5 µs |
+| **320px** | **460.3 µs** | 504.7 µs | 824.5 µs | 844.2 µs |
+
+TiTanF and Fontdue trade the lead: Fontdue is quicker at small sizes, the gap closes with size, and TiTanF wins outright at large sizes. Quality is not symmetric, though: TiTanF rasterizes quadratic curves *exactly* at every size (no flattening exists in the pipeline), while Fontdue reuses geometry tessellated for 40px — at large sizes its curve error grows to several pixels. TiTanF's other differentiators: zero dependencies, `no_std`, and panic-free parsing suitable for kernels, bootloaders and other embedded targets.
 
 ## License
 

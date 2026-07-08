@@ -64,8 +64,8 @@ impl TrueTypeFont {
     }
 
 
-    pub(crate) fn get_metrics(&self, glyph_id: &u32, scale: f32) -> (usize, isize) {
-        let idx = *glyph_id as usize;
+    pub(crate) fn get_metrics(&self, glyph_id: u32, scale: f32) -> (usize, isize) {
+        let idx = glyph_id as usize;
 
         if idx < self.hmtx.h_metrics.len() {
             let metric = self.hmtx.h_metrics[idx];
@@ -73,7 +73,10 @@ impl TrueTypeFont {
         } else {
             let lsb_idx = idx - self.hmtx.h_metrics.len();
             if lsb_idx < self.hmtx.left_side_bearings.len() {
-                let advance = self.hmtx.h_metrics.last().unwrap().advance_width;
+                let advance = match self.hmtx.h_metrics.last() {
+                    Some(m) => m.advance_width,
+                    None => 0,
+                };
                 let lsb = self.hmtx.left_side_bearings[lsb_idx];
                 ((advance as f32 * scale) as usize, (lsb as f32 * scale) as isize)
             } else {
