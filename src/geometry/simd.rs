@@ -2,7 +2,9 @@
 
 use core::ops::{Add, Div, Mul, Sub};
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
+use core::arch::x86::*;
+#[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
 #[derive(Copy, Clone)]
@@ -137,7 +139,7 @@ impl Sub for f32x4 {
 #[inline(never)]
 pub fn accumulate_and_map(
     a: &mut [f32],
-    bounds: &[(u16, u16)],
+    bounds: &[(u32, u32)],
     width: usize,
     height: usize,
     out: &mut [u8],

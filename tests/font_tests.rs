@@ -349,3 +349,20 @@ fn kerning_absent_is_none() {
     let font = TrueTypeFont::load_font(&bytes).unwrap();
     assert!(font.get_kerning('A', 'A').is_none());
 }
+
+#[test]
+fn renders_glyphs_wider_than_2048px() {
+    // From 2048px up, f32 can no longer represent `dim - 0.0001`, so a
+    // fixed clamp epsilon let edge coordinates land on width/height and
+    // write past the coverage buffer.
+    let bytes = build_test_font();
+    let mut font = TrueTypeFont::load_font(&bytes).unwrap();
+
+    for size in [4096.0, 6000.0, 10000.0] {
+        let (metrics, bitmap) = font.get_char::<false>('A', size);
+        assert_eq!(bitmap.len(), metrics.width * metrics.height);
+        assert!(metrics.width >= 2048, "width {}", metrics.width);
+        let cy = metrics.height / 2;
+        assert_eq!(bitmap[cy * metrics.width + metrics.width / 2], 255);
+    }
+}

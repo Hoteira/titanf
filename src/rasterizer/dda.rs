@@ -73,7 +73,7 @@ pub struct Rasterizer {
     width: usize,
     height: usize,
     pub(crate) coverage_buffer: Vec<f32>,
-    pub(crate) scanline_bounds: Vec<(u16, u16)>,
+    pub(crate) scanline_bounds: Vec<(u32, u32)>,
     used_len: usize,
     /// True when `to_bitmap` has re-zeroed every span the last draw touched,
     /// letting `reset` skip the coverage clear entirely.
@@ -102,7 +102,7 @@ impl Rasterizer {
             self.coverage_buffer[..stale].fill(0.0);
         }
         let stale_rows = self.height.min(self.scanline_bounds.len());
-        self.scanline_bounds[..stale_rows].fill((u16::MAX, 0));
+        self.scanline_bounds[..stale_rows].fill((u32::MAX, 0));
 
         self.width = width;
         self.height = height;
@@ -117,7 +117,7 @@ impl Rasterizer {
             self.coverage_buffer.resize(len, 0.0);
         }
         if self.scanline_bounds.len() < height {
-            self.scanline_bounds.resize(height, (u16::MAX, 0));
+            self.scanline_bounds.resize(height, (u32::MAX, 0));
         }
 
         self.used_len = len;
@@ -154,11 +154,14 @@ impl Rasterizer {
             -shift_x * scale,
             shift_y * scale + height_px,
         );
-        // Clamp epsilon keeps trunc() strictly below the dimensions so cell
-        // indices never touch width/height.
-        let eps = 0.0001;
+        // Clamp to the largest float below each dimension so trunc() stays
+        // strictly below width/height and cell indices never reach them. A
+        // fixed epsilon is not enough: from 2048px up, `dim - 0.0001` rounds
+        // back to `dim` in f32.
+        let w_max = f32::from_bits(width_px.to_bits() - 1);
+        let h_max = f32::from_bits(height_px.to_bits() - 1);
         let min_vec = f32x4::zero();
-        let max_vec = f32x4::new(width_px - eps, height_px - eps, width_px - eps, height_px - eps);
+        let max_vec = f32x4::new(w_max, h_max, w_max, h_max);
         // Params rescale: (1/|dx|, 1/|dy|, dx, dy) in font units ->
         // (1/(|dx|s), 1/(|dy|s), dx*s, -dy*s) in buffer space (y flipped).
         let inv_s = 1.0 / scale;
@@ -202,7 +205,7 @@ impl Rasterizer {
     }
 
     #[inline(always)]
-    fn add(&mut self, idx: usize, x: u16, y: usize, height: f32, mid_x: f32) {
+    fn add(&mut self, idx: usize, x: u32, y: usize, height: f32, mid_x: f32) {
         debug_assert!(idx < self.coverage_buffer.len());
         debug_assert!(y < self.scanline_bounds.len());
         unsafe {
@@ -239,7 +242,7 @@ impl Rasterizer {
         let cy_inc: i32 = if down { 1 } else { -1 };
         let mut dist = (y1i - y0i).abs();
 
-        let cx = xi as u16;
+        let cx = xi as u32;
         let mut cy = y0i;
         let mut index = xi + y0i * self.width as i32;
 
@@ -291,7 +294,7 @@ impl Rasterizer {
         while dist > 0 {
             dist -= 1;
             let prev_index = index;
-            let prev_x = cx as u16;
+            let prev_x = cx as u32;
             let prev_y = cy as usize;
             let y_next: f32;
             let x_next: f32;
@@ -318,7 +321,7 @@ impl Rasterizer {
             x_prev = x_next;
             y_prev = y_next;
         }
-        self.add(index as usize, cx as u16, cy as usize, y_prev - y1, fract_pos((x_prev + x1) * 0.5));
+        self.add(index as usize, cx as u32, cy as usize, y_prev - y1, fract_pos((x_prev + x1) * 0.5));
     }
 
     /// Walk one monotonic quadratic piece exactly like `m_line`, but with
@@ -386,7 +389,7 @@ impl Rasterizer {
         while dist > 0 {
             dist -= 1;
             let prev_index = index;
-            let px = cx as u16;
+            let px = cx as u32;
             let py = cy as usize;
             let x_next: f32;
             let y_next: f32;
@@ -421,7 +424,7 @@ impl Rasterizer {
         }
         self.add(
             index as usize,
-            cx as u16,
+            cx as u32,
             cy as usize,
             y_prev - y1,
             fract_pos((x_prev + x1) * 0.5),
